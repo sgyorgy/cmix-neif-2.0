@@ -8,7 +8,7 @@
 Input: a transformer dump of a development run (NEIF_DEV_TFDUMP, see
 dev/tfdump.py) and the cost file of the same run (NEIF_DEV_COST).  Gated
 records (zone != 0) are skipped: there the coder does not read the
-transformer.
+transformer.  The records are read in chunks, so memory stays small.
 
 Arms, each run causally (predict, then learn) over the records in order:
   adapter  softmax(log p_tf + W h + b) with W (208 x 192) and b learned
@@ -25,12 +25,11 @@ Measures (bits per byte, on the records outside the gated zones):
     gain is its mixer's cost minus the reference mixer's cost.  The plan's
     go/no-go is about 0.0058 bits per byte (0.004 nat).
 
-Deterministic (fixed seeds).  Needs numpy; torch is used when importable
-(much faster), else numpy.
+Deterministic (fixed seeds).  Needs numpy; with numba the loops are
+compiled (minutes instead of hours for 2M records).
 """
 
 import argparse
-import math
 import sys
 
 import numpy as np
@@ -49,6 +48,105 @@ INDEX_OF = np.full(256, -1, dtype=np.int64)
 INDEX_OF[SET_BYTES] = np.arange(V)
 EPS = 1e-6
 
+try:
+    from numba import njit
+except ImportError:          # plain Python loops, slow
+    def njit(*a, **k):
+        if a and callable(a[0]):
+            return a[0]
+        return lambda f: f
+
+
+@njit(cache=False)
+def _mixer_run(inputs, bits, w, lr):
+    n, nb, k = inputs.shape
+    total = 0.0
+    for t in range(n):
+        for j in range(nb):
+            z = 0.0
+            for i in range(k):
+                z += w[j, i] * inputs[t, j, i]
+            p = 1.0 / (1.0 + np.exp(-z))
+            y = bits[t, j]
+            pa = p if y == 1 else 1.0 - p
+            if pa < 1e-12:
+                pa = 1e-12
+            total -= np.log2(pa)
+            g = lr * (y - p)
+            for i in range(k):
+                w[j, i] += g * inputs[t, j, i]
+    return total
+
+
+@njit(cache=False)
+def _adapter_run(logp, h, idx, W, b, lr, out):
+    n, v = logp.shape
+    d = h.shape[1]
+    z = np.empty(v)
+    for t in range(n):
+        zmax = -1e300
+        for a in range(v):
+            s = logp[t, a] + b[a]
+            for c in range(d):
+                s += W[a, c] * h[t, c]
+            z[a] = s
+            if s > zmax:
+                zmax = s
+        tot = 0.0
+        for a in range(v):
+            z[a] = np.exp(z[a] - zmax)
+            tot += z[a]
+        for a in range(v):
+            p = z[a] / tot
+            out[t, a] = p
+            g = p - (1.0 if a == idx[t] else 0.0)
+            gl = lr * g
+            b[a] -= gl
+            for c in range(d):
+                W[a, c] -= gl * h[t, c]
+
+
+@njit(cache=False)
+def _lsh_run(p_tf, code, idx, prev0, table, mask, w0, lr, out):
+    n, v = p_tf.shape
+    prev = prev0
+    w = w0
+    q = np.empty(v)
+    dd = np.empty(v)
+    m = np.empty(v)
+    for t in range(n):
+        slot = ((code[t] * 2654435761 + prev * 40503) & mask)
+        tot = 0.0
+        for a in range(v):
+            tot += table[slot, a]
+        for a in range(v):
+            q[a] = (table[slot, a] + 0.02) / (tot + 0.02 * v)
+        zmax = -1e300
+        for a in range(v):
+            lt = np.log(p_tf[t, a])
+            dd[a] = np.log(q[a]) - lt
+            m[a] = lt + w * dd[a]
+            if m[a] > zmax:
+                zmax = m[a]
+        s = 0.0
+        for a in range(v):
+            m[a] = np.exp(m[a] - zmax)
+            s += m[a]
+        md = 0.0
+        for a in range(v):
+            m[a] /= s
+            out[t, a] = m[a]
+            md += m[a] * dd[a]
+        g = -(dd[idx[t]] - md)
+        w -= lr * g
+        if w < 0.0:
+            w = 0.0
+        if w > 1.0:
+            w = 1.0
+        table[slot, idx[t]] += 1.0
+        prev = idx[t]
+    return prev, w
+
 
 def stretch(p):
     p = np.clip(p, 1e-6, 1 - 1e-6)
@@ -64,7 +162,7 @@ def bit_probs(dist, idx):
     byte = SET_BYTES[idx]
     out = np.empty((n, 8))
     bits = np.empty((n, 8), dtype=np.int64)
-    lo = np.zeros(n, dtype=np.int64)          # byte range [lo, lo + width)
+    lo = np.zeros(n, dtype=np.int64)
     width = 256
     csum = np.concatenate([np.zeros((n, 1)), np.cumsum(full, axis=1)], axis=1)
     rows = np.arange(n)
@@ -80,99 +178,51 @@ def bit_probs(dist, idx):
     return np.clip(out, 1e-6, 1 - 1e-6), bits
 
 
-def coder_bit_probs(cost_bits, bits):
-    """the coder's P(bit = 1) from the cost of the coded bit (bits)"""
-    p_act = np.power(2.0, -cost_bits)
-    return np.clip(np.where(bits == 1, p_act, 1 - p_act), 1e-6, 1 - 1e-6)
+class BitMixer:
+    """online logistic mixer per bit position; input 0 starts at weight 1"""
+
+    def __init__(self, k, lr=0.02):
+        self.w = np.zeros((8, k))
+        self.w[:, 0] = 1.0
+        self.lr = lr
+        self.bits = 0.0
+
+    def run(self, inputs, bits):
+        self.bits += _mixer_run(np.ascontiguousarray(inputs), np.ascontiguousarray(bits),
+                                self.w, self.lr)
 
 
-def mixer_cost(inputs, bits, lr=0.02):
-    """online logistic mixer per bit position: inputs (n, 8, k) stretched,
-    returns the total cost in bits"""
-    n, _, k = inputs.shape
-    w = np.zeros((8, k))
-    w[:, 0] = 1.0                               # start as the coder alone
-    total = 0.0
-    for t in range(n):
-        x = inputs[t]                            # (8, k)
-        z = np.einsum("jk,jk->j", w, x)
-        p = 1 / (1 + np.exp(-z))
-        y = bits[t]
-        pa = np.where(y == 1, p, 1 - p)
-        total -= np.log2(np.clip(pa, 1e-12, 1)).sum()
-        w += lr * (y - p)[:, None] * x
-    return total
+class Adapter:
+    def __init__(self, lr):
+        self.lr = lr
+        self.W = np.zeros((V, D))
+        self.b = np.zeros(V)
+
+    def run(self, logp, h, idx):
+        out = np.empty((len(idx), V))
+        _adapter_run(np.ascontiguousarray(logp), np.ascontiguousarray(h), idx,
+                     self.W, self.b, self.lr, out)
+        return out
 
 
-def run_adapter(r, idx, lr, use_torch):
-    n = len(idx)
-    logp = np.log(np.clip(r["slot"].astype(np.float64), EPS, None))
-    h = r["hidden"].astype(np.float64)
-    out = np.empty((n, V))
-    if use_torch:
-        import torch
-        W = torch.zeros(V, D, dtype=torch.float64)
-        b = torch.zeros(V, dtype=torch.float64)
-        LP = torch.from_numpy(logp)
-        H = torch.from_numpy(h)
-        for t in range(n):
-            z = LP[t] + W @ H[t] + b
-            p = torch.softmax(z, 0)
-            out[t] = p.numpy()
-            g = p.clone()
-            g[idx[t]] -= 1.0                     # d CE / d z
-            W -= lr * torch.outer(g, H[t])
-            b -= lr * g
-    else:
-        W = np.zeros((V, D))
-        b = np.zeros(V)
-        for t in range(n):
-            z = logp[t] + W @ h[t] + b
-            z -= z.max()
-            p = np.exp(z)
-            p /= p.sum()
-            out[t] = p
-            g = p.copy()
-            g[idx[t]] -= 1.0
-            W -= lr * np.outer(g, h[t])
-            b -= lr * g
-    return out
+class Lsh:
+    def __init__(self, k_bits, seed=7, lr=0.002, table_bits=18):
+        rng = np.random.default_rng(seed)
+        self.proj = rng.standard_normal((D, k_bits))
+        self.k = k_bits
+        self.table = np.zeros((1 << table_bits, V), dtype=np.float32)
+        self.mask = (1 << table_bits) - 1
+        self.w = 0.0
+        self.lr = lr
+        self.prev = 0
 
-
-def run_lsh(r, idx, k_bits, seed=7, lr=0.002):
-    n = len(idx)
-    rng = np.random.default_rng(seed)
-    proj = rng.standard_normal((D, k_bits))
-    h = r["hidden"].astype(np.float64)
-    sig = (h @ proj > 0).astype(np.int64)
-    code = (sig * (1 << np.arange(k_bits))).sum(axis=1)
-    prev = np.concatenate([[0], idx[:-1]])
-    ctx = code * V + prev
-    counts = {}
-    p_tf = np.clip(r["slot"].astype(np.float64), EPS, None)
-    p_tf /= p_tf.sum(axis=1, keepdims=True)
-    out = np.empty((n, V))
-    w = 0.0                                      # weight of the lsh model
-    for t in range(n):
-        c = counts.get(ctx[t])
-        if c is None:
-            q = np.full(V, 1.0 / V)
-        else:
-            q = (c + 0.02) / (c.sum() + 0.02 * V)
-        z = np.log(p_tf[t]) + w * (np.log(q) - np.log(p_tf[t]))
-        z -= z.max()
-        m = np.exp(z)
-        m /= m.sum()
-        out[t] = m
-        # gradient of -log m[y] w.r.t. w
-        d = np.log(q) - np.log(p_tf[t])
-        g = -(d[idx[t]] - (m * d).sum())
-        w = min(1.0, max(0.0, w - lr * g))
-        if c is None:
-            c = np.zeros(V)
-            counts[ctx[t]] = c
-        c[idx[t]] += 1.0
-    return out
+    def run(self, p_tf, h, idx):
+        sig = (h @ self.proj > 0).astype(np.int64)
+        code = (sig * (1 << np.arange(self.k))).sum(axis=1)
+        out = np.empty((len(idx), V))
+        self.prev, self.w = _lsh_run(np.ascontiguousarray(p_tf), code, idx, self.prev,
+                                     self.table, self.mask, self.w, self.lr, out)
+        return out
 
 
 def main(argv):
@@ -181,52 +231,69 @@ def main(argv):
     ap.add_argument("cost")
     ap.add_argument("--arms", default="adapter,lsh")
     ap.add_argument("--limit", type=int, default=0, help="first N records only")
+    ap.add_argument("--chunk", type=int, default=50000)
     ap.add_argument("--adapter-lr", type=float, default=0.002)
     ap.add_argument("--lsh-bits", type=int, default=16)
+    ap.add_argument("--mix-lr", type=float, default=0.002)
     args = ap.parse_args(argv[1:])
-    r = np.memmap(args.dump, dtype=RECORD, mode="r")
+    rec = np.memmap(args.dump, dtype=RECORD, mode="r")
     if args.limit:
-        r = r[:args.limit]
-    keep = np.flatnonzero(r["zone"] == 0)
-    r = np.asarray(r[keep])
-    idx = INDEX_OF[r["byte"]]
-    assert (idx >= 0).all()
-    n = len(idx)
-    c = np.fromfile(args.cost, dtype="<u2").reshape(-1, 8)
-    cost_bits = c[r["pos"].astype(np.int64)].astype(np.float64) / 2048.0
-    print("%d records outside the gated zones" % n)
-    try:
-        import torch  # noqa: F401
-        use_torch = True
-    except ImportError:
-        use_torch = False
-
-    p_tf = np.clip(r["slot"].astype(np.float64), EPS, None)
-    p_tf /= p_tf.sum(axis=1, keepdims=True)
-    ce = lambda dist: float(-np.log2(dist[np.arange(n), idx]).mean())
-    print("transformer slot      %.4f bits/B" % ce(p_tf))
-    print("coder                 %.4f bits/B" % float(cost_bits.sum(axis=1).mean()))
-
-    tf_bits, bits = bit_probs(p_tf, idx)
-    pc = coder_bit_probs(cost_bits, bits)
-    base_in = np.stack([stretch(pc), stretch(tf_bits), np.ones_like(pc)], axis=2)
-    ref = mixer_cost(base_in, bits) / n
-    alone = mixer_cost(np.stack([stretch(pc), np.ones_like(pc)], axis=2), bits) / n
-    print("mixer coder alone     %.4f bits/B   coder + slot %.4f bits/B" % (alone, ref))
-    for arm in args.arms.split(","):
-        if arm == "adapter":
-            dist = run_adapter(r, idx, args.adapter_lr, use_torch)
-            name = "adapter lr %g" % args.adapter_lr
-        elif arm == "lsh":
-            dist = run_lsh(r, idx, args.lsh_bits)
-            name = "lsh %d bits" % args.lsh_bits
-        else:
-            sys.exit("unknown arm " + arm)
-        ab, _ = bit_probs(dist, idx)
-        m = mixer_cost(np.stack([stretch(pc), stretch(ab), np.ones_like(pc)],
-                                axis=2), bits) / n
+        rec = rec[:args.limit]
+    cost = np.memmap(args.cost, dtype="<u2", mode="r").reshape(-1, 8)
+    arms = [a for a in args.arms.split(",") if a]
+    adapter = Adapter(args.adapter_lr) if "adapter" in arms else None
+    lsh = Lsh(args.lsh_bits) if "lsh" in arms else None
+    m_alone = BitMixer(2, args.mix_lr)
+    m_ref = BitMixer(3, args.mix_lr)
+    m_arm = {a: BitMixer(3, args.mix_lr) for a in arms}
+    ce = {"slot": 0.0, "coder": 0.0}
+    ce.update({a: 0.0 for a in arms})
+    n_total = 0
+    for lo in range(0, len(rec), args.chunk):
+        r = np.asarray(rec[lo:lo + args.chunk])
+        r = r[r["zone"] == 0]
+        if len(r) == 0:
+            continue
+        idx = INDEX_OF[r["byte"]]
+        assert (idx >= 0).all()
+        n = len(idx)
+        n_total += n
+        rows = np.arange(n)
+        cbits = cost[r["pos"].astype(np.int64)].astype(np.float64) / 2048.0
+        p_tf = np.clip(r["slot"].astype(np.float64), EPS, None)
+        p_tf /= p_tf.sum(axis=1, keepdims=True)
+        h = r["hidden"].astype(np.float64)
+        ce["slot"] -= np.log2(p_tf[rows, idx]).sum()
+        ce["coder"] += cbits.sum()
+        tf_bits, bits = bit_probs(p_tf, idx)
+        p_act = np.power(2.0, -cbits)
+        pc = np.clip(np.where(bits == 1, p_act, 1 - p_act), 1e-6, 1 - 1e-6)
+        one = np.ones_like(pc)
+        m_alone.run(np.stack([stretch(pc), one], axis=2), bits)
+        m_ref.run(np.stack([stretch(pc), stretch(tf_bits), one], axis=2), bits)
+        for a in arms:
+            if a == "adapter":
+                dist = adapter.run(np.log(p_tf), h, idx)
+            elif a == "lsh":
+                dist = lsh.run(p_tf, h, idx)
+            else:
+                sys.exit("unknown arm " + a)
+            ce[a] -= np.log2(np.clip(dist[rows, idx], 1e-12, 1)).sum()
+            ab, _ = bit_probs(dist, idx)
+            m_arm[a].run(np.stack([stretch(pc), stretch(ab), one], axis=2), bits)
+        print("... %d records" % n_total, file=sys.stderr, flush=True)
+    n = max(n_total, 1)
+    print("%d records outside the gated zones" % n_total)
+    print("transformer slot      %.4f bits/B" % (ce["slot"] / n))
+    print("coder                 %.4f bits/B" % (ce["coder"] / n))
+    print("mixer coder alone     %.4f bits/B   coder + slot %.4f bits/B"
+          % (m_alone.bits / n, m_ref.bits / n))
+    for a in arms:
+        name = ("adapter lr %g" % args.adapter_lr if a == "adapter"
+                else "lsh %d bits" % args.lsh_bits)
         print("%-20s  %.4f bits/B (slot %+.4f); coder proxy %.4f (%+.4f against "
-              "coder + slot)" % (name, ce(dist), ce(dist) - ce(p_tf), m, m - ref))
+              "coder + slot)" % (name, ce[a] / n, (ce[a] - ce["slot"]) / n,
+                                 m_arm[a].bits / n, (m_arm[a].bits - m_ref.bits) / n))
     return 0
 
 

@@ -250,3 +250,33 @@ README/CHANGES/NOTICE/ATTRIBUTION frissítése (GPL-3).
 2. GPU: konténer → checkpoint → QAT+ECQ (μ = 6.1e-9; λ ∈ {0, 0.1, 0.3}), 8+2 epoch karonként,
    aztán konténer + prefix A/B `…@új.c4`-gyel.
 3. Az első mérések után az 1.2, 1.4, 1.5 karok és a 1.7 (metaadat) a valós stream alapján.
+
+## 9. Első mérések enwik9-cel (2026-10-18)
+
+Gép: 4 vCPU Xeon @2.1 GHz, 15.7 GB RAM (lassabb a c2d-nél: a szövegrégió ~1.38 KB/s).
+
+- **Referencia (dev build, 20 MB stream-prefix):** 3,528,375 B (1.4113 bit/bájt), 3.52 h kódolás,
+  csúcs-RSS 10.0 GB, indulás ~8.6 perc (szótár 89 s, előfeldolgozás 106 s, előtanítás 50–71 s).
+  Egyezik a `doc/stream_rate.tsv` görbéjével. Két futás nem fér el egyszerre a memóriában.
+- **Azonosság:** a dev bináris az első 1,048,568 kódolt bájton bitre ugyanazt kódolja, mint a
+  szállított comp9 (ez a metaadat-blokk; a transformeres régióra még nincs ilyen ellenőrzés).
+- **Régiók:** metaadat-blokk 0–5.16 MB (1,390,721 B), redirect-blokk 5.16–8.84 MB (~0.85
+  bit/bájt), utána cikkszöveg (1.06–1.49 bit/bájt).
+- **Metaadat mezőnként** (`dev/meta_report.py`): page-id delta 192 KB (6.32 bit/rekord), revid
+  488 KB (16.04), időbélyeg fix forma 193 KB (17.56) + delta 91 KB (4.68), név 374 KB (12.28),
+  uid 50 KB (20.4). A page-id delta a *stream-sorrendbeli* különbség, vagyis az átrendezési
+  permutációt hordozza; a permutáció a `.new_article_order` maradékból **és a cikkek tartalmából**
+  áll elő, így a dekóder a blokk idején nem vezetheti le. Olcsóbbá csak úgy tehető, ha az id-ket a
+  szöveg után állítjuk vissza, és kivesszük a transformer promptjából (újratanítás) — legfeljebb
+  ~100 KB. Az időbélyegeket a `ts_progress` már most is a revid-ből becsült, nem kódolt
+  előrejelzéshez kötve kódolja. **Az 1.7-es tétel becslése: 0 / −0.02 / −0.1 MB.**
+- **Transformer vs. a teljes coder** (12–14 MB, cikkszöveg, `dev/tfdump.py`): transformer
+  egymagában 1.2621, PPMd 2.3614, coder 1.2408 bit/bájt — **a teljes CM-együttes csak ~1.7 %-ot
+  ad a transformerhez.** A nagy kar tehát maga a transformer (5. fázis), a CM-oldali karok
+  ennek a 1.7 %-nak csak a töredékét mozgathatják.
+- **2. fázis (online adaptáció) — no-go** (`dev/sim_online.py`, 2 M bájt): az online fej-adapter
+  legjobb esetben −0.0001 bit/bájt a transformeren, −0.0002…−0.0004 a coder-proxyn; az
+  LSH-kontextusok 12/16/20 biten semlegesek. A küszöb ~0.0058 volt; teljes streamre ≤ ~28 KB.
+  **A 2. fázis becslése: 0 / 0 / −0.03 MB.**
+- Módosított részösszeg a mostani erőforrásokkal: kb. **−0.2 / −0.8 / −2.2 MB** (az 1.1–1.4-es
+  karok és a 3. fázis mérése még hátravan).
