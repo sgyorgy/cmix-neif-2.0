@@ -5,7 +5,7 @@
 # Rows whose path starts with 'REF:' are NOT in this package: they are large
 # artefacts, named by location and, where recorded, checksum.
 path	origin	sha256	size	purpose
-ATTRIBUTION.md	this entry	cace844a2fb39b75855f3b5fff5a3a6ae14abb5be87d3d6fe9cedddebe46c1bb	35846	authorship, licences, upstream URLs and commits
+ATTRIBUTION.md	this entry	7effa319d3fbc0ebe5a17c60035908ae44e5634f8e5f0c7072f00bb566330d71	35905	authorship, licences, upstream URLs and commits
 README.md	this entry	eed58a9080b72322970114bd4e7f1e728eae81fefbb8794fc32b70c01460593b	33331	master guide
 bitl/FORMAT.md	this entry	03b84e1213e438398646714c3bc76cc2e5723a4fc414b8967036d9bcbfdd3a55	4352	BITLSTM training tools
 bitl/README.md	this entry	20ede83a6c9337b73f779e3ef6354a7c33dcce4c272ce06cdf69d26122d4882f	9331	BITLSTM training tools
@@ -82,6 +82,7 @@ tf/3_train/probe_row_max.py	this entry	1784927bb91928dcf78e1ea7226726f3ea8d2d98f
 tf/3_train/qat_arm.sh	this entry	11dcf703bff96f755ecdd820018c2e8b26890717c279d2bfecc9d049b1ef96a5	1912	training chain: phase script, host setup or repair
 tf/3_train/setup_host.sh	this entry	4ae08a00ab4ee21172bfcdbddbb15999273dec5360e23d7ce88a4a248c5ac9b6	16077	training chain: phase script, host setup or repair
 tf/3_train/wiederanlauf.sh	this entry	80a4e6e37229c76a1a41268e6f43a3d69bb434f52ecdaf0ec03b6d422a71d856	3186	training chain: phase script, host setup or repair
+tf/4_export/container_stats.py	this entry	ec6cbd92a738e5ce11c415db617a69fd54fa600c1c4572a4b11c6a083c37a819	5434	level statistics of the int4 tensors of a container (entropy, clip share per tensor family), read only
 tf/4_export/convert_container_v4.py	this entry	b5263160a18e126dd7ba672eb193650659e554b23e5e5ae846b0bc00469d3553	8038	zeroes the rows of collapsed attention channels, writes format v4
 tf/4_export/export.sh	this entry	5a16a1e9a030f67bc5614d50fccd895569eb65c2b3658b682a7a87530df03e29	4292	stage (e): reference weight file to the shipped container, CPU
 tf/4_export/prune_dead_neurons.py	this entry	a0f5bc01704610f4e492f9b3688ecdcf88d3177257a54e5859d9886b1b88fb88	15502	removes the structurally dead MLP neurons (70 of 12,288 in the shipped weights)
