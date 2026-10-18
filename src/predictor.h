@@ -78,6 +78,13 @@ class Predictor {
     wordlbl_ = word_label::Create();
   }
   void MetalrBlockEnde();
+#if NEIF_DEV
+  // read-only views for the measurement hooks of the development build
+  // (src/neif_dev.h): the transformer slot row the mixers read and the PPMd
+  // row, 256 floats each
+  const float* DevTfRow() { return tf1_slot_ ? &tf1_slot_->BytePredict()[0] : nullptr; }
+  const float* DevPpmdRow() { return byte_model_ ? &byte_model_->BytePredict()[0] : nullptr; }
+#endif
 
  private:
   adaptive_depth::State adepth_;

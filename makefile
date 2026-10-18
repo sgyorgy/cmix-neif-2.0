@@ -4,6 +4,9 @@
 #   make prof_gen    first pass of the profile-guided build
 #   make prof_use    ./cmix with profile and LTO  <- the submitted recipe
 #   make cmix_aux    the build helper (writes the embedded blocks; NOT shipped)
+#   make cmix_dev    development build with the measurement hooks of
+#                    src/neif_dev.h (NOT shipped; dev/README.md)
+#   make cmix_devtime  the same with cycle counters (NOT shipped)
 #   make sstrip      the section-header stripper used when packing
 #   make clean
 #
@@ -12,7 +15,9 @@
 # (profile, LTO, strip, pack, embed dictionary and article order).
 #
 # There are no build options.  Every value below is fixed; the source contains
-# no conditional compilation beyond the platform guards it inherited.  The three
+# no conditional compilation beyond the platform guards it inherited, the
+# build helper's AUX_BUILD and the NEIF_DEV hooks of the development targets
+# (src/neif_dev.h), which the submitted binary never sees.  The three
 # translation groups (fast / slow / cold) and the per-file flag sets are NOT
 # cosmetic: several files must be compiled with -ffp-model=precise and without
 # contraction, and the binary is only reproducible when they are.
@@ -161,7 +166,7 @@ clean:
 
 all: cmix
 
-.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux fast slow cold
+.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux cmix_dev cmix_devtime fast slow cold
 
 
 # The BUILD HELPER.  It is compiled from the same sources with AUX_BUILD=1 and
@@ -175,3 +180,43 @@ cmix_aux: CPPFLAGS_PART-THAT-IS-COLD        += -fprofile-use=$(ROOT_DIR)/pgo_dat
 cmix_aux: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
 cmix_aux: clean cmix
 	mv cmix cmix_aux
+
+
+# DEVELOPMENT builds with the measurement hooks of src/neif_dev.h.  They are
+# NOT shipped and no part of the submitted recipe (dev/README.md): the flags of
+# `make prof_use` plus -DNEIF_DEV=1 (and -DNEIF_DEV_TIME=1), in every flag
+# group, so that all translation units see the same class definitions.  In the
+# submitted build these defines are absent and every hook expands to nothing.
+# The profile no longer matches the few functions that carry a hook; clang
+# then compiles them without it, which the two -Wno flags keep quiet about.
+DEV_PGO_QUIET := -Wno-profile-instr-out-of-date -Wno-profile-instr-unprofiled
+# further defines of an experiment arm, from the command line:
+#   make cmix_dev DEV_DEFS="-DNEIF_ARM_X=1"
+DEV_DEFS ?=
+cmix_dev: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -flto -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: CPPFLAGS_PART-THAT-IS-COLD        += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: TF1_CXXFLAGS                      += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: BITL_CXXFLAGS                     += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: ADEPTHDET_CXXFLAGS                += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: DETNUM_CXXFLAGS                   += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: S26VEC_CXXFLAGS                   += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: OPT1VEC_CXXFLAGS                  += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: WORDLBL_CXXFLAGS                  += -DNEIF_DEV=1 $(DEV_DEFS)
+cmix_dev: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
+cmix_dev: clean cmix
+	mv cmix cmix_dev
+
+cmix_devtime: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -flto -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: CPPFLAGS_PART-THAT-IS-COLD        += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: TF1_CXXFLAGS                      += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: BITL_CXXFLAGS                     += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: ADEPTHDET_CXXFLAGS                += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: DETNUM_CXXFLAGS                   += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: S26VEC_CXXFLAGS                   += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: OPT1VEC_CXXFLAGS                  += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: WORDLBL_CXXFLAGS                  += -DNEIF_DEV=1 -DNEIF_DEV_TIME=1 $(DEV_DEFS)
+cmix_devtime: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
+cmix_devtime: clean cmix
+	mv cmix cmix_devtime

@@ -11,6 +11,8 @@
 #include "char_rate.h"
 #include "ppm_logit_prior.h"
 #include "vocab_frozen.h"
+#include "neif_dev.h"
+#include "tf_sharpen.h"
 #include <cmath>
 
 #include "transformer_gate_ctx.h"
@@ -264,6 +266,19 @@ unsigned int Discretize(float p) {
   mixer_1_[0].E2ESeedHead(
       (unsigned int)mixer_0_.size(),
       (float)(mixer_chain::kSeed) * 0.001f / (float)mixer_0_.size());
+#if NEIF_ARM_TFCTX & 1
+  // the rows of the confidence states carry most of the bytes: seed them like
+  // the head row instead of letting them start at zero
+  if (transformer::Active()) {
+    for (unsigned int q = 0; q < tf_sharpen::kStates; ++q) {
+      manager_.tf1_gate_ctx1 = 4096u + q;
+      mixer_1_[0].E2ESeedHead(
+          (unsigned int)mixer_0_.size(),
+          (float)(mixer_chain::kSeed) * 0.001f / (float)mixer_0_.size());
+    }
+    manager_.tf1_gate_ctx1 = 0;
+  }
+#endif
 
 }
 int lstmpr=0, lstmex=0;
@@ -277,7 +292,10 @@ float byte_mixer_output=0.0f;
 
 float tf1_slot_output=0.0f;
  float Predictor::Predict() {
+  NEIF_DEV_T0(t_fxcm);
   fxcm_model_.PredictHalf();
+  NEIF_DEV_T1(t_fxcm, kFxcmPredict);
+  NEIF_DEV_T0(t_inputs);
   manager_.UpdateLx1();
   manager_.UpdateTf1Gate();   // gate zone as mixer context
   unsigned int input_index = 0;
@@ -391,6 +409,8 @@ float tf1_slot_output=0.0f;
                        + manager_.long_bit_context_;
   }
 
+  NEIF_DEV_T1(t_inputs, kInputs);
+  NEIF_DEV_T0(t_mix);
   {
     adepth_.Gather(&layers_[0].Inputs()[0], adepth_lo, input_index,
                    layers_[0].Inputs()[0], aux_fxcm_input);
@@ -464,6 +484,7 @@ float tf1_slot_output=0.0f;
   if (byte_mixer_override >= 0) p = byte_mixer_override;
   bitl_override_ = (byte_mixer_override >= 0) ? 1 : 0;
   last_p16_ = (unsigned int)(1 + 65534 * p);
+  NEIF_DEV_T1(t_mix, kMix);
   return p;
 }
 
@@ -509,7 +530,10 @@ void Predictor::E2EGrad(int bit) {
 }
 
  void Predictor::Perceive(int bit) {
+  NEIF_DEV_T0(t_wl);
   word_label::Perceive(wordlbl_, bit);
+  NEIF_DEV_T1(t_wl, kWordLabel);
+  NEIF_DEV_T0(t_models);
   pagectx::surprise.AddBit(last_p16_, bit, manager_.bit_context_ >= 128);
   lstm_mixer_inputs::st.AddBit(bit, last_p16_);
   bracket_model_->Perceive(bit);
@@ -528,9 +552,13 @@ void Predictor::E2EGrad(int bit) {
   }
   grammar_match_->Perceive(bit);
   {}
+  NEIF_DEV_T1(t_models, kModelsBit);
+  NEIF_DEV_T0(t_bytebit);
   byte_model_->Perceive(bit);
   byte_mixer_->Perceive(bit);
   tf1_slot_->Perceive(bit);
+  NEIF_DEV_T1(t_bytebit, kByteModelsBit);
+  NEIF_DEV_T0(t_train);
 
   if (char_rate::Forced(manager_.bit_context_)) {
     sse_.PerceiveContextOnly(bit);
@@ -553,14 +581,18 @@ void Predictor::E2EGrad(int bit) {
     adaptive_depth::TrainStep(adepth_, bit);
     ++adepth_.coded;
   }
+  NEIF_DEV_T1(t_train, kMixTrain);
 
   bool byte_update = false;
   if (manager_.bit_context_ >= 128) byte_update = true;
 
+  NEIF_DEV_T0(t_ctx);
   if (byte_update)
     id_exclude::Byte(((manager_.bit_context_ << 1) | (unsigned int)bit) & 0xFFu);
   manager_.UpdateContexts(bit);
+  NEIF_DEV_T1(t_ctx, kContexts);
   if (byte_update) {
+    NEIF_DEV_T0(t_mbyte);
     bracket_model_->ByteUpdate();
 
     for (unsigned int i = 0; i < direct_models_.size(); ++i) {
@@ -585,6 +617,8 @@ void Predictor::E2EGrad(int bit) {
       indirect_r_models_[i].ByteUpdate();
     }
     grammar_match_->ByteUpdate();
+    NEIF_DEV_T1(t_mbyte, kModelsByte);
+    NEIF_DEV_T0(t_ppmd);
     byte_model_->ByteUpdate();
     if (tf1_prior_writer_) {
       const std::valarray<float>& tf1_pp = byte_model_->BytePredict();
@@ -595,6 +629,8 @@ void Predictor::E2EGrad(int bit) {
     }
 
     lstm_mixer_inputs::st.ByteEnd();
+    NEIF_DEV_T1(t_ppmd, kPpmd);
+    NEIF_DEV_T0(t_tf);
     if (tf1_engine_ && tf1_match_count_ > 0) {
       unsigned int best = tf1_match_base_;
       unsigned char best_len = match_models_[tf1_match_base_].MatchLength();
@@ -619,6 +655,8 @@ void Predictor::E2EGrad(int bit) {
       // no transformer: abstention row, arithmetically no slot at all.
       tf1_slot_->SetProbsOff();
     }
+    NEIF_DEV_T1(t_tf, kTransformer);
+    NEIF_DEV_T0(t_lstm);
     {
     const std::valarray<float>& p = byte_model_->BytePredict();
     for (unsigned int j = 0; j < 256; ++j) {
@@ -631,8 +669,10 @@ void Predictor::E2EGrad(int bit) {
     }
     byte_mixer_->ByteUpdate();
     }
+    NEIF_DEV_T1(t_lstm, kByteLstm);
 
   }
+  NEIF_DEV_T0(t_lout);
   byte_mixer_output = byte_mixer_->Predict()[0];
   lstmpr=Discretize(byte_mixer_output);
   lstmex=byte_mixer_->ex;
@@ -641,7 +681,15 @@ void Predictor::E2EGrad(int bit) {
   lstm_sharpen::state.full_alive =
       (lstm_sharpen::state.full_ex >= byte_mixer_->Lx1Bot() &&
        lstm_sharpen::state.full_ex <= byte_mixer_->Lx1Top()) ? 1 : 0;
+#if NEIF_ARM_TFCTX
+  tf_sharpen::state.alive =
+      (tf_sharpen::state.ex >= tf1_slot_->Lx1Bot() &&
+       tf_sharpen::state.ex <= tf1_slot_->Lx1Top()) ? 1 : 0;
+#endif
+  NEIF_DEV_T1(t_lout, kByteLstm);
+  NEIF_DEV_T0(t_fxp);
   fxcm_model_.Perceive(bit);
+  NEIF_DEV_T1(t_fxp, kFxcmPerceive);
   if (byte_update)manager_.bit_context_ = 1;
 }
 
@@ -651,7 +699,9 @@ void Predictor::E2EGrad(int bit) {
 }
 
 void Predictor::ObserveTfOnlyByte(unsigned int byte) {
+  NEIF_DEV_T0(t_tf);
   if (tf1_engine_) tf1_engine_->Step(byte_model_->BytePredict(), byte);
+  NEIF_DEV_T1(t_tf, kTransformer);
 }
 
 void Predictor::Pretrain(int bit) {

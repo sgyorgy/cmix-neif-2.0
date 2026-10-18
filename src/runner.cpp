@@ -87,6 +87,7 @@ static void WriteManifest(const char* path, int argc, char** argv) {
 #include "ip_pack.h"
 #include "metablock_form.h"
 #include "ts_progress.h"
+#include "neif_dev.h"
 
 
 
@@ -246,6 +247,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
   unsigned long long percent =
       1 + (input_bytes / (unsigned long long)progress_steps);
   unsigned long long prog_left = 1;
+  NEIF_DEV_LIMIT(input_bytes);
   ClearOutput();
   size_t buffer_size = (size_t)io_buffer_kb * 1024;
   std::vector<char> buffer(buffer_size);
@@ -258,6 +260,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
     if (got == 0) break;
     for (size_t i = 0; i < got; ++i) {
       unsigned char c = static_cast<unsigned char>(buffer[i]);
+      NEIF_DEV_BYTE_BEGIN(e, p, pos, c);
       if (run_mode::gram.ByteActive(pos)) {
         unsigned int ctx = 1;
         for (int j = 7; j >= 0; --j) {
@@ -265,7 +268,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
           const int f = run_mode::gram.Forced(ctx);
           if (f < 0) {
             run_mode::gram.CountFree(ctx);
-            e.Encode(bit);
+            NEIF_DEV_ENCODE(e, bit, j);
           } else {
             run_mode::gram.CountKnown(ctx);
             if (f != bit) run_mode::gram.Violation(pos, ctx, f, bit);
@@ -277,7 +280,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
       } else
       {
       for (int j = 7; j >= 0; --j) {
-        e.Encode((c>>j)&1);
+        NEIF_DEV_ENCODE(e, (c>>j)&1, j);
       }
       }
       if (!MetablockInert()) {
@@ -321,6 +324,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
         for (int k = 0; k < tn; ++k) e.ObserveKnownByte(tb[k]);
         timestamp_skip::Ende();
       }
+      NEIF_DEV_BYTE_END();
       if (--prog_left == 0) {
         prog_left = percent;
         double frac = 100.0 * pos / input_bytes;
@@ -333,6 +337,7 @@ void Compress(unsigned long long input_bytes, std::ifstream* is,
     }
   }
   e.Flush();
+  NEIF_DEV_AFTER_FLUSH(os, pos);
   run_mode::gram.Report("compress");
   if (!MetablockInert()) {
     metablock::mk.Report("compress");
@@ -498,6 +503,7 @@ bool RunCompression(bool enable_preprocess, const std::string& input_path,
   }
 
   console_progress::PhaseEnd();   // "preprocessing enwik9" ends here
+  NEIF_DEV_STREAM_COPY(temp_path);
 
   std::ifstream temp_in(temp_path, std::ios::in | std::ios::binary);
   if (!temp_in.is_open()) return false;
@@ -634,6 +640,7 @@ int main(int argc, char** argv) {
       extract_weights_only();
     }
   }
+  NEIF_DEV_INIT(argc > 1 && argv[1][1] == 'e');
   srand((unsigned int)run_options::ParamI("seed", SEED));
   progress_steps = run_options::ParamI("progress_steps", 10000);
   if (progress_steps < 1) progress_steps = 10000;

@@ -23,6 +23,13 @@ class Encoder {
   void EndTraceByte();
   void Flush();
   size_t OutputSize() { return total_out_ + out_.size();}
+#if NEIF_DEV
+  // bits written so far, the open interval included (src/neif_dev.h)
+  double DevBits() const {
+    return 8.0 * (double)(total_out_ + out_.size()) + 32.0
+        - __builtin_log2((double)(x2_ - x1_) + 1.0);
+  }
+#endif
  private:
   void WriteByte(unsigned int byte);
   unsigned int Discretize(float p);

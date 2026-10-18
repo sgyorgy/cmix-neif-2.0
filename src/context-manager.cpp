@@ -1,4 +1,5 @@
 #include "context-manager.h"
+#include "tf_sharpen.h"
 #include "attributes.h"
 #include "page_registry.h"
 
@@ -205,13 +206,22 @@ void ContextManager::UpdateLx1() {
   const lstm_sharpen::State& s = lstm_sharpen::state;
   {
     unsigned int q = s.full_alive ? (1 + lstm_sharpen::Q4(s.full_best)) : 0;
+#if NEIF_ARM_TFCTX & 2
+    q = q * tf_sharpen::kStates + tf_sharpen::Q();
+    if (tf_gate::ctx.zone) q = 5u * tf_sharpen::kStates + tf_gate::ctx.zone;
+#else
     if (tf_gate::ctx.zone) q = 5u + tf_gate::ctx.zone;
+#endif
     lx1_agree = (unsigned long long)q * 256 + long_bit_context_;
   }
 }
 
 void ContextManager::UpdateTf1Gate() {
   tf1_gate_ctx1 = (unsigned long long)tf_gate::ctx.zone;
+#if NEIF_ARM_TFCTX & 1
+  // outside the gated zones: one row per state of the transformer's top byte
+  if (!tf_gate::ctx.zone) tf1_gate_ctx1 = 4096u + tf_sharpen::Q();
+#endif
 }
 
 void ContextManager::UpdateReload() {

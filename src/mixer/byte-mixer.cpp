@@ -1,5 +1,6 @@
 #include "byte-mixer.h"
 #include "../vocab_frozen.h"
+#include "../tf_sharpen.h"
 
 ByteMixer::ByteMixer(unsigned int num_models, const unsigned int& bit_context,
     const std::vector<bool>& vocab, unsigned int vocab_size, Lstm* lstm) :
@@ -100,6 +101,9 @@ void Tf1Slot::SetProbs(const float* set_probs) {
         ? set_probs[transformer::kByteToIndex[i]] : 0.0f;
   }
   ByteModel::ByteUpdate();
+#if NEIF_ARM_TFCTX
+  tf_sharpen::Top(probs_);
+#endif
 }
 
 void Tf1Slot::SetProbsNeutral() {
@@ -108,9 +112,15 @@ void Tf1Slot::SetProbsNeutral() {
     probs_[i] = (vocab_[i] && transformer::InSet(i)) ? u : 0.0f;
   }
   ByteModel::ByteUpdate();
+#if NEIF_ARM_TFCTX
+  tf_sharpen::Clear();
+#endif
 }
 
 void Tf1Slot::SetProbsOff() {
   for (int i = 0; i < 256; ++i) probs_[i] = 0.0f;
   ByteModel::ByteUpdate();
+#if NEIF_ARM_TFCTX
+  tf_sharpen::Clear();
+#endif
 }

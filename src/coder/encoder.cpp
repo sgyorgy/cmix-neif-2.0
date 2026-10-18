@@ -1,4 +1,5 @@
 #include "encoder.h"
+#include "../neif_dev.h"
 
 Encoder::Encoder(std::ofstream* os, Predictor* p) : os_(os), x1_(0),
     x2_(0xffffffff), p_(p) {
@@ -37,6 +38,7 @@ void Encoder::Encode(int bit) {
     return;
   }
   unsigned int p = Discretize(p_->Predict());
+  NEIF_DEV_T0(t_bitl);
   if (bit_head::Enabled()
       && !bit_head::AuxOff()
       && !bit_head::MetaOff()
@@ -45,6 +47,7 @@ void Encoder::Encode(int bit) {
     p = bit_head::Adjust(p, p_->bitl_stage1_, p_->bitl_n_stage1_,
                           p_->bitl_m1raw_, p_->bitl_override_);
   }
+  NEIF_DEV_T1(t_bitl, kBitl);
   const unsigned int xmid = x1_ + ((x2_ - x1_) >> 16) * p +
       (((x2_ - x1_) & 0xffff) * p >> 16);
   if (bit) {
@@ -52,11 +55,13 @@ void Encoder::Encode(int bit) {
   } else {
     x1_ = xmid + 1;
   }
+  NEIF_DEV_T0(t_bito);
   if (bit_head::Enabled()
       && !bit_head::AuxOff()
       && !bit_head::MetaOff()
       && !p_->AdepthSkipped()
       ) bit_head::Observe(bit);
+  NEIF_DEV_T1(t_bito, kBitl);
   p_->Perceive(bit);
 
   while (((x1_^x2_) & 0xff000000) == 0) {
