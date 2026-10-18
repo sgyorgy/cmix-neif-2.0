@@ -415,6 +415,20 @@ def run_phase(phase: Phase, geometry_name: str | None = None) -> PhaseResult:
         if main_process:
             print("loaded " + load_from, flush=True)
 
+    # PLAN_10PCT.md phase 3: entropy-constrained rounding of the int4 weights
+    # (tft/ecq.py), on when TFT_ECQ_LAMBDA is set.  The bf16 phase has no
+    # quantizers.  Installed before DDP, so that DDP sees the final modules.
+    ecq_on = False
+    if phase != "bf16":
+        from tft import ecq
+
+        ecq_on = ecq.install_from_env(
+            raw_model,
+            loss_tokens=tftcfg.MICRO_BATCH_TOKENS,
+            accumulation=tftcfg.gradient_accumulation_steps(world_size),
+            verbose=main_process,
+        )
+
     model: DDP = DDP(raw_model)
     if phase == "bf16":
         # his comment in quantize.py/cooldown.py: do NOT compile the quantized
@@ -521,6 +535,10 @@ def run_phase(phase: Phase, geometry_name: str | None = None) -> PhaseResult:
     seconds = time.time() - started
 
     if main_process:
+        if ecq_on:
+            # the latent weights to the centres of their ECQ levels, so that
+            # the export (round to nearest) writes those levels
+            ecq.bake(raw_model)
         torch.save(raw_model.state_dict(), save_to)
         print(
             "phase "

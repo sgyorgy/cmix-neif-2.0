@@ -16,6 +16,9 @@
 #
 # DEV_DEFS in the environment (e.g. DEV_DEFS="-DNEIF_ARM_X=1") is passed to
 # make: the defines of an experiment arm, added to every flag group.
+# DEV_WEIGHTS=<container> replaces the weight container: its FNV-1a-64 is
+# stamped into the work copy of src/transformer.h (WeightsFingerprint) and it
+# is appended in place of the container of <comp9>.
 #
 # Like build.sh, the build runs in a copy of the tree under a clean
 # environment (env -i); unlike it, nothing is packed, so the binary starts
@@ -41,6 +44,26 @@ trap 'rm -rf "$WORK"' EXIT
     --exclude=./dev/work .) | (cd "$WORK" && tar xf -)
 chmod -R u+w "$WORK"
 mkdir -p "$WORK/tmp"
+if [ -n "${DEV_WEIGHTS:-}" ]; then
+  [ -s "$DEV_WEIGHTS" ] || { echo "build_dev.sh: no container at $DEV_WEIGHTS" >&2; exit 2; }
+  DEV_WEIGHTS="$(cd "$(dirname "$DEV_WEIGHTS")" && pwd)/$(basename "$DEV_WEIGHTS")"
+  python3 -I - "$DEV_WEIGHTS" "$WORK/src/transformer.h" <<'PY'
+import re
+import sys
+
+container, header = sys.argv[1:3]
+h = 0xcbf29ce484222325
+with open(container, "rb") as f:
+    for b in f.read():
+        h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+src = open(header).read()
+pat = r"(inline unsigned long long WeightsFingerprint\(\) \{\s*return )0x[0-9a-f]+ULL;"
+new, n = re.subn(pat, r"\g<1>0x%016xULL;" % h, src)
+assert n == 1, "WeightsFingerprint() not found in " + header
+open(header, "w").write(new)
+print("weights %s: fingerprint 0x%016x stamped" % (container, h))
+PY
+fi
 (cd "$WORK" && env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     HOME="$WORK" TMPDIR="$WORK/tmp" LC_ALL=C LANG=C TZ=UTC \
@@ -53,21 +76,28 @@ mkdir -p "$WORK/tmp"
 
 # The tail of comp9: hints, article order, weight container, then the 16-byte
 # header with their sizes (HeaderInfo of src/readalike_prepr/self_extract.h).
-python3 -I - "$COMP9" "$WORK/$TARGET" "$OUT" <<'EOF'
+python3 -I - "$COMP9" "$WORK/$TARGET" "$OUT" "${DEV_WEIGHTS:-}" <<'EOF'
 import struct
 import sys
 
-comp9, binary, out = sys.argv[1:4]
+comp9, binary, out, weights = sys.argv[1:5]
 with open(comp9, "rb") as f:
     c9 = f.read()
 d, o, z, w = struct.unpack("<4i", c9[-16:])
 assert z == 0 and d > 0 and o > 0 and w > 0, (d, o, z, w)
 assert d + o + w + 16 < len(c9), "comp9 is shorter than its blocks"
+blocks = c9[-(d + o + w + 16):-(w + 16)]          # hints, order
+if weights:
+    with open(weights, "rb") as f:
+        container = f.read()
+else:
+    container = c9[-(w + 16):-16]
+tail = blocks + container + struct.pack("<4i", d, o, 0, len(container))
 with open(binary, "rb") as f:
     image = f.read()
 with open(out, "wb") as f:
-    f.write(image + c9[-(d + o + w + 16):])
+    f.write(image + tail)
 print("%s: %d B image + %d B blocks (hints %d, order %d, weights %d)"
-      % (out, len(image), d + o + w + 16, d, o, w))
+      % (out, len(image), len(tail), d, o, len(container)))
 EOF
 chmod 0755 "$OUT"

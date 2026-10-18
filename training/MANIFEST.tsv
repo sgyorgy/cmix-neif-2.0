@@ -5,7 +5,7 @@
 # Rows whose path starts with 'REF:' are NOT in this package: they are large
 # artefacts, named by location and, where recorded, checksum.
 path	origin	sha256	size	purpose
-ATTRIBUTION.md	this entry	93398da5ffc672b6b6a58f5841912337f502781e578efbfefbd46a62d0d9def6	36101	authorship, licences, upstream URLs and commits
+ATTRIBUTION.md	this entry	10aa59574f18bc7ec5d824f1b865996ec4aa8db8516088137ff2602c4961021d	36155	authorship, licences, upstream URLs and commits
 README.md	this entry	34268257846a9ad34059d41845351b3ab92fbcca50ca53e8ee9c71a2430aaec0	34343	master guide
 bitl/FORMAT.md	this entry	03b84e1213e438398646714c3bc76cc2e5723a4fc414b8967036d9bcbfdd3a55	4352	BITLSTM training tools
 bitl/README.md	this entry	20ede83a6c9337b73f779e3ef6354a7c33dcce4c272ce06cdf69d26122d4882f	9331	BITLSTM training tools
@@ -59,7 +59,7 @@ tf/2_package/trim_inplace.py	this entry	6ffcb7f86e0476c6ffb5104879d32840b6ae2b67
 tf/2_package/vocab-bitmap.u8	this entry	d257fd4a869ca4f61d67bb487f4276517a4d81540098f76828403b298b29a70c	32	the frozen 208-value byte set, 32 B, popcount 208
 tf/2_package/warmstart.py	this entry	8f477cd798654e6ab559b02e48af2f2b1df3a6b360908a199f1cd8294fd836b4	9441	form-aware warm start (copied into the tree by patch_paket11.py)
 tf/2_package/zpdump.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	df42676f98ab15a60e26ab8bcb2a72d17ac93b465e300e3b2a6e8dea0f516e5d	15928	dump loader of the trainer (copied into the tree by patch_paket11.py)
-tf/3_train/README.md	this entry	78e5979e758ef9d3068804c3a617ee675baf29eba7dfb4a8a1aa30d0b86ae669	10156	training chain: phase script, host setup or repair
+tf/3_train/README.md	this entry	b31003a3038d33ed68e5e6340e224613b6796633de5c03d84b7c30f1de06e183	12913	training chain: phase script, host setup or repair
 tf/3_train/chain/01_anchor_w2048.env	this entry	344546f2e2b91229cec52b5fd5a3c1362cb9ccb1c55096371fc9bd7ef3b6ba6a	1127	environment of one run of the training chain
 tf/3_train/chain/02_w1024.env	this entry	5a3cd45fd759277cd5b8a15fcc28a3e0ae22ea688799e5225f0dd164c3a432d0	954	environment of one run of the training chain
 tf/3_train/chain/03_w1536.env	this entry	2114259c8136c99fe128d34e1aa71c0545f08b208fe24ac9c08ecc03efbbddcf	972	environment of one run of the training chain
@@ -97,13 +97,15 @@ tf/tree_overlay/run/setup_pod.sh	this entry	bf5fafd4928c9b21c9fc99fe3a2b933b9726
 tf/tree_overlay/run/smoke.sh	this entry	e8d8dcd47b7ea72957cf7cb57fe781a657606f09ef26812c4dcc7bb2ce13d42e	2045	pod setup, smoke, export chain
 tf/tree_overlay/tft/__init__.py	this entry	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	0	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/calibrate.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	38bf2f48418798ca422ca3cb4e4221ecd7bbe2846777bc6026b88687382e58bf	6940	geometry registry, dataset checks, runner, export with manifest
-tf/tree_overlay/tft/config.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	76f3b1271ffb6fa705784e352c5fa7e190d9fa5d2daefbe0f46e797ca1db0e01	13565	geometry registry, dataset checks, runner, export with manifest
+tf/tree_overlay/tft/config.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	7a70070ed4f7198ba4295327546e39ce16087c2edb13cc9358a8b042c80bd2cb	13842	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/cooldown_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	c97853eddf9ea7e4a40bc66c8caa29f39ddaa0941b998f9e490edfa87d599960	533	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/dataset.py	this entry	9e51b6bb41393493260b59d5f4b4afd9a3a1f4e5bb5578eeb196c7f8243d5e6d	12408	geometry registry, dataset checks, runner, export with manifest
+tf/tree_overlay/tft/ecq.py	this entry	c222baac38cef2da7d5ae56e0a8a91b83946b66650085dd5b70b418f81d62535	14803	entropy-constrained rounding of the int4 weights in QAT, rate term at the score's exchange rate, bake to level centres (PLAN_10PCT.md phase 3)
+tf/tree_overlay/tft/ecq_selftest.py	this entry	2287d2fadaf662058b920cf987eca59edefe2a5cb98d67f34c77f4d9d098861c	8318	CPU self-test of ecq.py: lambda 0 equals QuantizeFunction, one histogram step per optimizer step, bake, rate gradient
 tf/tree_overlay/tft/export_weights_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	ff5331fc22970885e23a772d88a274f6f749f026e15e704d2827f21eda2f6b19	21483	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/param_count.py	this entry	6a682fa2170e0c915631015c88af2c470d3e5306c0a37ef3c09630c87b7dc090	25329	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/quantize_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	a1abf1abe51a3a2d4b1df0d5aff593d20a2c04804bad74404e29b2e606fd9183	354	geometry registry, dataset checks, runner, export with manifest
-tf/tree_overlay/tft/runner.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	0974c86e38d3f1558e43172078aa4f235b003866f1547f9b916c015436a12a06	21689	geometry registry, dataset checks, runner, export with manifest
+tf/tree_overlay/tft/runner.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	1bbd5bb67ae19b8d9e50602803f9144f74cac0dec622f9204ad6f5b53263880e	22413	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/stub_imports.py	this entry	0242753d93cf3040415d1deb6c8d9747b1e692a49882202e645c7f6417d39072	1417	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/train_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	781f674ba02cabe7ab2390058013cf69cdcaf386bc8a93ea144dd4be1d79f941	346	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/zctx/README.md	this entry	b062d9d43de2f33ed41ec431c6648166d5569e83275ea4a69cb498c35cbcb41b	2486	training form: gate zones, prompts, sentinel, X2/match channels, packing, loaders

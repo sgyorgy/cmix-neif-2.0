@@ -156,7 +156,11 @@ def poc_schedule(phase: Phase) -> PhaseSchedule:
     warmup = min(epochs, round(fraction * epochs))
     scale_steps = base.initialize_scales_steps
     if scale_steps is not None:
-        scale_steps = int(os.environ.get("TFT_SCALE_STEPS", str(scale_steps)))
+        # "none": keep the scales of the loaded checkpoint (a QAT run that
+        # continues from a container, tf/4_export/container_to_tch.py); any
+        # integer, 0 included, runs one weight step of initialize_scales()
+        steps = os.environ.get("TFT_SCALE_STEPS", str(scale_steps))
+        scale_steps = None if steps == "none" else int(steps)
     return PhaseSchedule(
         epochs=epochs,
         warmup_epochs=warmup,

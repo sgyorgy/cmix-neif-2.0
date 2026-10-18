@@ -5,7 +5,9 @@
 #   bash dev/ab_prefix.sh <enwik9> <bytes> <workdir> <comp9> <arm> [<arm> ...]
 #
 # An arm is a source tree, or <tree>=<defines> for a tree built with further
-# defines (`.=-DNEIF_ARM_X=1`, passed as DEV_DEFS to dev/build_dev.sh).
+# defines (`.=-DNEIF_ARM_X=1`, passed as DEV_DEFS to dev/build_dev.sh), with
+# an optional @<container> at the end for another weight container
+# (`.@new.c4`, passed as DEV_WEIGHTS).
 # The first arm is the reference.  For each tree: dev/build_dev.sh builds its
 # development binary (with the data blocks of <comp9>), then one run
 #
@@ -44,16 +46,19 @@ VARIANT=""
 n=0
 for arm in "$@"; do
   n=$((n + 1))
+  weights=""
+  case "$arm" in *@*) weights="${arm##*@}"; arm="${arm%@*}";; esac
   tree="${arm%%=*}"
   defs=""
   [ "$tree" != "$arm" ] && defs="${arm#*=}"
   d="$WORKDIR/$n"
   rm -rf "$d"
   mkdir -p "$d"
-  echo "== $n: $tree ${defs:+(defines: $defs)}" >&2
-  DEV_DEFS="$defs" bash "$HERE/build_dev.sh" "$tree" "$COMP9" "$d/cmix_dev" $VARIANT >&2
+  echo "== $n: $tree ${defs:+(defines: $defs)} ${weights:+(weights: $weights)}" >&2
+  DEV_DEFS="$defs" DEV_WEIGHTS="$weights" \
+    bash "$HERE/build_dev.sh" "$tree" "$COMP9" "$d/cmix_dev" $VARIANT >&2
   (cd "$tree" && git rev-parse HEAD 2>/dev/null || echo "not a git tree") > "$d/tree.txt"
-  echo "$tree${defs:+ $defs}" >> "$d/tree.txt"
+  echo "$tree${defs:+ $defs}${weights:+ @$weights}" >> "$d/tree.txt"
   ln -s "$ENWIK9" "$d/enwik9"
   (cd "$d" && NEIF_DEV_STOP="$BYTES" NEIF_DEV_COST="$d/cost.u16" \
      ./cmix_dev -e enwik9 archive9 > run.out 2> run.err) || {

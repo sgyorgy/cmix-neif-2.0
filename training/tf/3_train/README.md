@@ -174,3 +174,52 @@ Renting hosts and mirroring checkpoints are not part of this package. Before a
 start or a resume check the warm-start sha256, the env values, status 206 of
 every URL, driver, cards and CUDA context, and the `continued schedule` line in
 the log.
+
+## Continuing QAT from the shipped container (ECQ)
+
+Phase 3 of `PLAN_10PCT.md` (top level). The bf16 and qat checkpoints of the
+shipped transformer are not part of this package, but its container can be
+turned back into a qat state, and qat can continue from there with
+entropy-constrained rounding (`tree_overlay/tft/ecq.py`).
+
+1. **Checkpoint from the container** (any host; `--tch` needs torch):
+
+   ```
+   python3 tf/4_export/container_to_tch.py \
+       ../weights-poc8m_w2048_p15f_v3bf16_gestrichen_v4.c4 models/poc8m_w2048-pkd.npz \
+       --tch models/poc8m_w2048-pkd.tch --manifest tf/4_export/weights-poc8m_w2048.bin.json
+   ```
+
+   The tool first replays the export chain on the checkpoint and stops unless
+   that gives the container back byte for byte. The checkpoint loads with
+   `strict=True` into the qat and fp32 models of the arm `pkd`, and
+   `tft/export_weights_poc.py` (with its checks against `QuantizeFunction`)
+   writes from it the same tensors as the numpy replay; both were checked on
+   CPU. Latent weights sit on the centres of their levels; the 86 zeroed rows
+   and the 70 dead neurons come back as zero rows with the scale 2^-24.
+
+2. **qat with ECQ**: the variables of `chain/09_qat.env`, plus
+
+   | variable | value | why |
+   |---|---|---|
+   | `TFT_SCALE_STEPS` | `none` | keep the loaded scales; an integer, 0 included, runs one `scaled_max` step, which flips the 18 negative row scales |
+   | `TFT_ECQ_LAMBDA` | e.g. `0.05` | ECQ, in squared quantization steps per bit; `0` is round to nearest |
+   | `TFT_ECQ_RATE_MU` | `6.1e-9` | the rate of the levels in the objective at the exchange rate of the score (41 KB of archive per 0.001 nat/token, a container bit costs 2/8 B) |
+   | `TFT_WARMUP_FRACTION` | `0` | no warm-up from 25x: the state is converged, the cosine runs from 2.5e-6 down |
+   | `TFT_EPOCHS_QAT`, `TFT_EPOCHS_FP32` | e.g. 8 and 2 | to be measured |
+
+   with the checkpoint as `models/poc8m_w2048-pkd.tch` and `bash qat_arm.sh`
+   as for row 09 (it runs qat, fp32 and `run/export_chain.sh`). Keep the ECQ
+   variables in the fp32 phase too. At the end of each phase the latent
+   weights are moved to the centres of their ECQ levels (`ecq.bake`), so that
+   the export, which rounds to nearest, writes those levels. The per-epoch
+   checkpoints keep the latent weights; a resumed run installs ECQ again.
+   `python -m tft.ecq_selftest` checks the quantizer on CPU.
+
+3. **Measure**: `tf/4_export/export.sh` gives the container,
+   `container_stats.py` its rate, and `dev/ab_prefix.sh` with the arm
+   `.@<new container>` against the shipped container the archive on a stream
+   prefix (`dev/README.md`).
+
+4. **Choose lambda** (two or three values) by
+   `delta S = 2 * delta container + delta archive`.

@@ -34,10 +34,13 @@ can change the order of float operations, so that build is for time only.
 * `build_dev.sh <tree> <comp9> <out> [time]` builds the development binary of
   a source tree and appends the four data blocks of a built `comp9` (hints,
   article order, weight container, header), so that it runs `-e enwik9`.
-* `ab_prefix.sh <enwik9> <bytes> <workdir> <comp9> <tree>...` builds every
-  tree and codes the first `<bytes>` bytes of the stream with each, one run
-  after the other. It prints the coded bytes against the first tree and the
-  per-window difference of the cost files.
+* `ab_prefix.sh <enwik9> <bytes> <workdir> <comp9> <arm>...` builds every
+  arm and codes the first `<bytes>` bytes of the stream with each, one run
+  after the other. It prints the coded bytes against the first arm and the
+  per-window difference of the cost files. An arm is a source tree,
+  `<tree>=<defines>` for experiment defines, and `...@<container>` for another
+  weight container (`build_dev.sh` stamps its FNV-1a-64 into the work copy of
+  `src/transformer.h`).
 * `cost_report.py` costs per window, per bit position and per byte value of
   one run, or the difference of two.
 * `tfdump.py` reads a transformer dump: cross entropy of the transformer slot
