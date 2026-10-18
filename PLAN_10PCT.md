@@ -205,3 +205,47 @@ README/CHANGES/NOTICE/ATTRIBUTION frissítése (GPL-3).
 - A transformer cikkhatáron resetel (KV + KDA); a tréning `max_merge_tokens` opciója nincs használva.
 - Upstream: L3 ~22 B/c, DRAM ~6 B/c; a CM-mel közös folyamatban a súlyfolyam kiszorulhat L3-ból →
   packed int4 (meglévő kernel) in-process mérése indokolt.
+
+## 8. Állapot és mért számok (2026-10-18)
+
+### Kész
+| lépés | eredmény | hol |
+|---|---|---|
+| 0.1 reprodukció | `build.sh` → comp9 sha256 `8b07d85f…`, 4,000,689 B (4 perc, 4 vCPU) | — |
+| 0.2 fejlesztői build | `make cmix_dev` / `cmix_devtime`: prefix-leállítás, bitenkénti valós kódköltség a coder állapotából, stream-másolat, transformer-dump (slot-sor, hidden, PPMd), ciklusszámlálók; a szállított comp9 a hookokkal is bájtazonos (újrafordítással ellenőrizve) | `src/neif_dev.h`, `dev/` |
+| 0.3 A/B harness | karok: forrásfa, `fa=-D…` kísérleti define-ok, `…@konténer` másik súlykonténer (ujjlenyomat-bélyegzéssel) | `dev/ab_prefix.sh`, `dev/build_dev.sh`, `dev/cost_report.py`, `dev/tfdump.py`, `dev/fetch_enwik9.sh` |
+| 0.5 konténer → checkpoint | bájtazonos roundtrip a teljes export-láncon; CPU-n (torch 2.14.1) `strict=True` betöltés a pkd-ág qat/fp32 modelljébe, és az eredeti torch-export ugyanazokat a tenzorokat írja (a CPU-n számolt rope-táblák kivételével) | `training/tf/4_export/container_to_tch.py` |
+| 1.1 kar | `NEIF_ARM_TFCTX=1/2/3` (transformer top-bájt + konfidencia mint final-/layer-0-mixer kontextus), alapból ki, mérés nélkül | `src/tf_sharpen.h` |
+| 3.1 ECQ-QAT | entrópia-korlátos kerekítés, a skála-gradiensben az S árfolyamán árazott ráta-tag (μ = 6.1e-9 nat/token/bit), „bake” a szintközepekre; `TFT_SCALE_STEPS=none`; CPU self-test 5/5; recept a `training/tf/3_train/README.md`-ben | `training/tf/tree_overlay/tft/ecq.py` |
+
+### Mért számok (enwik9 nélkül is mérhetők)
+- **int4 szintek kontextusos kódolása** (oszlop-/sorátlag, előző szint): legfeljebb ~8.8 KB
+  konténerenként (statikus felső becslés) → alacsony prioritás.
+- **ECQ szimuláció** a szállított súlyokon (latens = szintközép + egyenletes zaj a binben):
+  λ = 0.1: −5 KB, λ = 0.3: −29 KB (+6.8 % torzítás), λ = 0.5: −206 KB (+66 %) konténerenként;
+  a lépésköz növelése: ×1.1: −88 KB (+19 %), ×1.25: −266 KB (+57 %), ×1.5: −512 KB (+126 %).
+  A szomszéd-választás önmagában kevés; a ráta fő karja a lépésköz, ezért kapott a skála
+  gradiense ráta-tagot.
+- **Durva veszteségmodell** (veszteség ∝ torzítás; a 4 bites kvantálás adója ≈ 2.6 % ≈ 0.02
+  nat/token): az egyenletesen durvább lépésköz nagyjából nullszaldós (×1.25: −531 KB S a két
+  konténeren, +467 KB archívum). Nyereség csak abból jöhet, hogy a QAT a ráta-taggal ott
+  durvít, ahol a veszteség nem érzékeny → **a 3. fázis becslése lefelé módosul: 0 / −0.3 /
+  −1.0 MB** (korábban −0.6 / −1.2 / −2.0).
+- **Módosított részösszeg a mostani erőforrásokkal: −0.2 / −1.2 / −3.1 MB (−0.2 / −1.2 /
+  −3.3 %)**; mindennel (4. és 5. fázis is): −2.2 / −5.5 / −10.4 MB (−2.3 / −5.7 / −10.8 %).
+  A 10 % így csak a nagy GPU-track felső becslésével jön ki.
+
+### Blokkolók
+- **enwik9 nem érhető el ebből a környezetből** (a hálózati szabály tiltja a `mattmahoney.net`-et);
+  enélkül egyetlen kódolási mérés sem futtatható (a coder csak a saját stream-formáján fut).
+  Megoldás: a környezet hálózati beállításaiban az *Allowed domains* közé `mattmahoney.net` és
+  `www.mattmahoney.net`, utána `bash dev/fetch_enwik9.sh <dir>`.
+- A GPU-oldalhoz (λ/μ-söprés) a GPU-gépen kell a D-csomag (stream-dump + priorok a
+  felhasználó prior-generátorával, ~228 GB).
+
+### Következő lépések
+1. enwik9 után: 40 MB-os prefix A/B (referencia vs. `NEIF_ARM_TFCTX=1/2/3`), időprofil
+   `cmix_devtime`-mal, transformer-dump egy 4 MB-os szeletről → 2. fázis szimulációi.
+2. GPU: konténer → checkpoint → QAT+ECQ (μ = 6.1e-9; λ ∈ {0, 0.1, 0.3}), 8+2 epoch karonként,
+   aztán konténer + prefix A/B `…@új.c4`-gyel.
+3. Az első mérések után az 1.2–1.5-ös karok.

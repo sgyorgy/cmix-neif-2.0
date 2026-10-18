@@ -45,6 +45,8 @@ can change the order of float operations, so that build is for time only.
   one run, or the difference of two.
 * `tfdump.py` reads a transformer dump: cross entropy of the transformer slot
   and of PPMd, and with the cost file of the same run that of the coder.
+* `fetch_enwik9.sh <dir> [<url>]` fetches `enwik9.zip` (default: the official
+  location) and keeps `enwik9` only if its sha256 is `159b8535…`.
 
 ## How to use them
 
