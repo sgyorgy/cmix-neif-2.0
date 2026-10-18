@@ -27,6 +27,9 @@
 #   AB_KEEP=1   keep the work files of the runs (stream copy, temp files)
 #   AB_JOBS=k   run up to k arms at the same time (default 1); each run takes
 #               one core and the memory of a coder run, see its peak RSS
+#   AB_REF_DUMPS=1  the first arm also writes the stream copy (stream.bin) and,
+#               with AB_TFDUMP_FROM / AB_TFDUMP_LEN, a transformer dump
+#               (tfdump.bin); both are kept
 set -eu
 
 usage="usage: ab_prefix.sh <enwik9> <bytes> <workdir> <comp9> <arm> [<arm> ...]"
@@ -67,7 +70,15 @@ done
 # one run per arm, up to AB_JOBS at a time
 run_arm() {
   local d="$WORKDIR/$1"
-  (cd "$d" && NEIF_DEV_STOP="$BYTES" NEIF_DEV_COST="$d/cost.u16" \
+  local dumps=()
+  if [ "$1" = 1 ] && [ "${AB_REF_DUMPS:-0}" = 1 ]; then
+    dumps+=("NEIF_DEV_STREAM=$d/stream.bin")
+    if [ -n "${AB_TFDUMP_LEN:-}" ]; then
+      dumps+=("NEIF_DEV_TFDUMP=$d/tfdump.bin" "NEIF_DEV_TFDUMP_FROM=${AB_TFDUMP_FROM:-0}"
+              "NEIF_DEV_TFDUMP_LEN=$AB_TFDUMP_LEN")
+    fi
+  fi
+  (cd "$d" && env "${dumps[@]}" NEIF_DEV_STOP="$BYTES" NEIF_DEV_COST="$d/cost.u16" \
      ./cmix_dev -e enwik9 archive9 > run.out 2> run.err) || {
     echo "ab_prefix.sh: run $1 failed, see $d/run.err" >&2
     tail -20 "$d/run.err" >&2
@@ -78,7 +89,7 @@ run_arm() {
   if [ "${AB_KEEP:-0}" != 1 ]; then
     find "$d" -mindepth 1 -maxdepth 1 ! -name cost.u16 ! -name 'run.*' \
       ! -name result.txt ! -name tree.txt ! -name cmix_dev ! -name enwik9 \
-      ! -name archive9 -exec rm -rf {} +
+      ! -name archive9 ! -name stream.bin ! -name tfdump.bin -exec rm -rf {} +
   fi
   echo "== run $1 done: $(cat "$d/result.txt")" >&2
 }
