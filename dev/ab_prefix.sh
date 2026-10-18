@@ -25,6 +25,8 @@
 #   AB_TIME=1   build the cycle-counter variant instead (time only; it may
 #               code other bits than the submitted build)
 #   AB_KEEP=1   keep the work files of the runs (stream copy, temp files)
+#   AB_JOBS=k   run up to k arms at the same time (default 1); each run takes
+#               one core and the memory of a coder run, see its peak RSS
 set -eu
 
 usage="usage: ab_prefix.sh <enwik9> <bytes> <workdir> <comp9> <arm> [<arm> ...]"
@@ -54,26 +56,49 @@ for arm in "$@"; do
   d="$WORKDIR/$n"
   rm -rf "$d"
   mkdir -p "$d"
-  echo "== $n: $tree ${defs:+(defines: $defs)} ${weights:+(weights: $weights)}" >&2
+  echo "== build $n: $tree ${defs:+(defines: $defs)} ${weights:+(weights: $weights)}" >&2
   DEV_DEFS="$defs" DEV_WEIGHTS="$weights" \
     bash "$HERE/build_dev.sh" "$tree" "$COMP9" "$d/cmix_dev" $VARIANT >&2
   (cd "$tree" && git rev-parse HEAD 2>/dev/null || echo "not a git tree") > "$d/tree.txt"
   echo "$tree${defs:+ $defs}${weights:+ @$weights}" >> "$d/tree.txt"
   ln -s "$ENWIK9" "$d/enwik9"
+done
+
+# one run per arm, up to AB_JOBS at a time
+run_arm() {
+  local d="$WORKDIR/$1"
   (cd "$d" && NEIF_DEV_STOP="$BYTES" NEIF_DEV_COST="$d/cost.u16" \
      ./cmix_dev -e enwik9 archive9 > run.out 2> run.err) || {
-    echo "ab_prefix.sh: run $n failed, see $d/run.err" >&2
+    echo "ab_prefix.sh: run $1 failed, see $d/run.err" >&2
     tail -20 "$d/run.err" >&2
-    exit 1
+    return 1
   }
   grep "^NEIF_DEV_RESULT" "$d/run.out" > "$d/result.txt" || {
-    echo "ab_prefix.sh: run $n printed no result, see $d/run.out" >&2; exit 1; }
+    echo "ab_prefix.sh: run $1 printed no result, see $d/run.out" >&2; return 1; }
   if [ "${AB_KEEP:-0}" != 1 ]; then
     find "$d" -mindepth 1 -maxdepth 1 ! -name cost.u16 ! -name 'run.*' \
       ! -name result.txt ! -name tree.txt ! -name cmix_dev ! -name enwik9 \
-      -exec rm -rf {} +
+      ! -name archive9 -exec rm -rf {} +
   fi
+  echo "== run $1 done: $(cat "$d/result.txt")" >&2
+}
+JOBS="${AB_JOBS:-1}"
+failed=0
+running=0
+for k in $(seq 1 "$n"); do
+  if [ "$running" -ge "$JOBS" ]; then
+    wait -n || failed=1
+    running=$((running - 1))
+  fi
+  echo "== run $k started $(date -u +%T) UTC" >&2
+  run_arm "$k" &
+  running=$((running + 1))
 done
+while [ "$running" -gt 0 ]; do
+  wait -n || failed=1
+  running=$((running - 1))
+done
+[ "$failed" = 0 ] || { echo "ab_prefix.sh: at least one run failed" >&2; exit 1; }
 
 python3 -I - "$WORKDIR" "$n" <<'EOF'
 import os

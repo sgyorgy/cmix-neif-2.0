@@ -47,6 +47,11 @@ can change the order of float operations, so that build is for time only.
   and of PPMd, and with the cost file of the same run that of the coder.
 * `fetch_enwik9.sh <dir> [<url>]` fetches `enwik9.zip` (default: the official
   location) and keeps `enwik9` only if its sha256 is `159b8535…`.
+* `prefix_identity.sh <archive9> <archive9>` checks that two runs coded the
+  same bits on their common prefix (a running `comp9 -e` or a stopped
+  development run).
+
+`ab_prefix.sh` runs up to `AB_JOBS` arms at once (default 1).
 
 ## How to use them
 
