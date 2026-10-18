@@ -64,6 +64,7 @@
 
 #include <string>
 
+#include "build_guards.h"
 #include "tf1/tf1_engine.h"
 #include "transformer.h"
 
@@ -289,6 +290,12 @@ inline void AfterFlush(O* os, unsigned long long pos) {
   }
   printf("NEIF_DEV_RESULT stream_bytes=%llu coded_bytes=%llu seconds=%.1f "
          "peak_rss_kb=%llu\n", pos, out, secs, hwm_kb);
+  // the fill of fxcm's mixer input rows (capacity 560 / 64 / 64): the room
+  // an experiment arm has for further inputs
+  fprintf(stderr, "dev build: fxcm inputs at most %d (layer 1), %d (layer 2), "
+          "%d (final), %d predictions\n", build_guards::g_max_mx1,
+          build_guards::g_max_mx2, build_guards::g_max_mx4,
+          build_guards::g_max_pred);
   PrintCycles(pos);
   if (cost_file) fclose(cost_file);
   if (tf_file) fclose(tf_file);

@@ -282,6 +282,9 @@ unsigned int Discretize(float p) {
 
 }
 int lstmpr=0, lstmex=0;
+#if NEIF_ARM_TFFX
+int tfpr = 2048;   // experiment arm, see src/models/fxcmv1.cpp
+#endif
 
 namespace dictreload {
 unsigned int mtc_len = 0;
@@ -678,6 +681,9 @@ void Predictor::E2EGrad(int bit) {
   lstmex=byte_mixer_->ex;
   lstm_fx_link::Push(lstmpr, lstmex);
   tf1_slot_output = tf1_slot_->Predict()[0];
+#if NEIF_ARM_TFFX
+  tfpr = Discretize(tf1_slot_output);
+#endif
   lstm_sharpen::state.full_alive =
       (lstm_sharpen::state.full_ex >= byte_mixer_->Lx1Bot() &&
        lstm_sharpen::state.full_ex <= byte_mixer_->Lx1Top()) ? 1 : 0;

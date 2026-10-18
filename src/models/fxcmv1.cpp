@@ -76,6 +76,18 @@ typedef __m256i YMM;
 extern const U8 wrt_2b[256];
 extern const U8 wrt_3b[256];
 extern int lstmpr, lstmex;
+// Experiment arm NEIF_ARM_TFFX (dev/README.md, off in the submitted build):
+// the transformer slot's prediction of the current bit, 1..4095 like lstmpr.
+//   & 1  an internal input of the 18 first-layer mixers
+//   & 2  an internal input of the second-layer mixers
+//   & 4  an APM on it, in the context of the partial byte and of fxcm's own
+//        prediction, as one more fxcm output
+#ifndef NEIF_ARM_TFFX
+#define NEIF_ARM_TFFX 0
+#endif
+#if NEIF_ARM_TFFX
+extern int tfpr;
+#endif
 
 namespace dictreload {
 extern int ord_x, ord_w;
@@ -4008,6 +4020,9 @@ APM<16>  apmA2;
 APM<18>  apmA3;
 APM<17>  apmA4;
 APM<17>  apmA5;
+#if NEIF_ARM_TFFX & 4
+APM<13>  apmTf;
+#endif
 
 RunContextMap rcmA[1];
 
@@ -4097,6 +4112,9 @@ Mix mmmO[4];
     apmA3.Init();
     apmA4.Init();
     apmA5.Init();
+#if NEIF_ARM_TFFX & 4
+    apmTf.Init();
+#endif
 
     rcmA[0].Init(1*4096*4096,6);
 
@@ -6268,6 +6286,9 @@ GLUE_ATTR int modelPrediction() {
     mxA[16].cxt=tagS&1023;
 
     x.mxInputs1.add_internal(stretch((lstmpr)));
+#if NEIF_ARM_TFFX & 1
+    x.mxInputs1.add_internal(stretch(tfpr));
+#endif
 
     for (int i=0;i<18;i++) mxA[i].pf();
     for (int i=0;i<5;i++)  mxA1[i].pf();
@@ -6289,6 +6310,9 @@ GLUE_ATTR int modelPrediction() {
     x.mxInputs2.add(mxA[15].p1());
     if (nearTag==true) x.mxInputs2.add(mxA[16].p1()); else  x.mxInputs2.add(0);
     x.mxInputs2.add_internal(stretch((lstmpr))/2);
+#if NEIF_ARM_TFFX & 2
+    x.mxInputs2.add_internal(stretch(tfpr)/2);
+#endif
     x.mxInputs4.add(mxA[17].p1());
     //l2
     x.mxInputs4.add(mxA1[0].p1());
@@ -6393,6 +6417,9 @@ GLUE_ATTR void predict_half() {
     AddPrediction(stretch(pt));
     pz=apmA5.p(pu,   ((x.c0*4)^hash(min(9,pz),x5&0x80ff)), rate,x.y);
     AddPrediction(stretch(pz));
+#if NEIF_ARM_TFFX & 4
+    AddPrediction(stretch(apmTf.p(tfpr, x.c0 + ((pr >> 7) << 8), rate, x.y)));
+#endif
     if (fails&255) pr=(pt*6+pu  +pv*11+pz*14 +31)>>5;
     else           pr=(pt*4+pu*7+pv*12+pz*9 +31)>>5;
     AddPrediction(stretch(pr));

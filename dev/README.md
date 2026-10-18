@@ -76,9 +76,18 @@ tree:
 | `NEIF_ARM_TFCTX=1` | the final mixer selects its weight row, outside the gated zones, by the transformer's most probable byte: still possible after the bits coded so far, and its probability in 8 steps (today one row serves all those bytes); the new rows start seeded like the head row | `src/tf_sharpen.h`, `src/mixer/byte-mixer.cpp`, `src/predictor.cpp`, `src/context-manager.cpp` |
 | `NEIF_ARM_TFCTX=2` | the 24th layer-0 mixer selects by the state of the byte LSTM (as today) times that state of the transformer | same |
 | `NEIF_ARM_TFCTX=3` | both | same |
+| `NEIF_ARM_TFFX=1` | the transformer slot's prediction of the current bit as an internal input of the 18 first-layer mixers of fxcm (today only the byte LSTM's is) | `src/models/fxcmv1.cpp`, `src/predictor.cpp` |
+| `NEIF_ARM_TFFX=2` | the same for the second-layer mixers of fxcm | same |
+| `NEIF_ARM_TFFX=4` | an APM on that prediction, in the context of the partial byte and of fxcm's own prediction, as one more fxcm output | same |
 
-Neither changes the geometry of the mixers, so BITLSTM reads the same
-columns. Example, 40 MB of the stream, reference and the three arms:
+The bits of `NEIF_ARM_TFFX` combine (`=7`: all three). The first layer of
+fxcm has room for 560 inputs, the second for 64 (32 used by its mixers); the
+development build prints the most it saw at the end of a run, and the main
+predictor stops with a message if fxcm's outputs leave fewer than two free
+columns.
+
+None of them changes the geometry of the main mixers, so BITLSTM reads the
+same columns. Example, 40 MB of the stream, reference and the three arms:
 
 ```
 bash dev/ab_prefix.sh enwik9 40000000 work comp9 . .=-DNEIF_ARM_TFCTX=1 \
