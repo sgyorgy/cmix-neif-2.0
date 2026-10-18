@@ -216,6 +216,7 @@ README/CHANGES/NOTICE/ATTRIBUTION frissítése (GPL-3).
 | 0.3 A/B harness | karok: forrásfa, `fa=-D…` kísérleti define-ok, `…@konténer` másik súlykonténer (ujjlenyomat-bélyegzéssel) | `dev/ab_prefix.sh`, `dev/build_dev.sh`, `dev/cost_report.py`, `dev/tfdump.py`, `dev/fetch_enwik9.sh` |
 | 0.5 konténer → checkpoint | bájtazonos roundtrip a teljes export-láncon; CPU-n (torch 2.14.1) `strict=True` betöltés a pkd-ág qat/fp32 modelljébe, és az eredeti torch-export ugyanazokat a tenzorokat írja (a CPU-n számolt rope-táblák kivételével) | `training/tf/4_export/container_to_tch.py` |
 | 1.1 kar | `NEIF_ARM_TFCTX=1/2/3` (transformer top-bájt + konfidencia mint final-/layer-0-mixer kontextus), alapból ki, mérés nélkül | `src/tf_sharpen.h` |
+| 1.3 kar | `NEIF_ARM_TFFX` (1/2/4 kombinálható): a transformer bit-predikciója az fxcm 1./2. szintű mixereibe és egy APM-en át új fxcm-kimenetként; alapból ki, mérés nélkül | `src/models/fxcmv1.cpp` |
 | 3.1 ECQ-QAT | entrópia-korlátos kerekítés, a skála-gradiensben az S árfolyamán árazott ráta-tag (μ = 6.1e-9 nat/token/bit), „bake” a szintközepekre; `TFT_SCALE_STEPS=none`; CPU self-test 5/5; recept a `training/tf/3_train/README.md`-ben | `training/tf/tree_overlay/tft/ecq.py` |
 
 ### Mért számok (enwik9 nélkül is mérhetők)
@@ -248,4 +249,4 @@ README/CHANGES/NOTICE/ATTRIBUTION frissítése (GPL-3).
    `cmix_devtime`-mal, transformer-dump egy 4 MB-os szeletről → 2. fázis szimulációi.
 2. GPU: konténer → checkpoint → QAT+ECQ (μ = 6.1e-9; λ ∈ {0, 0.1, 0.3}), 8+2 epoch karonként,
    aztán konténer + prefix A/B `…@új.c4`-gyel.
-3. Az első mérések után az 1.2–1.5-ös karok.
+3. Az első mérések után az 1.2, 1.4, 1.5 karok és a 1.7 (metaadat) a valós stream alapján.
