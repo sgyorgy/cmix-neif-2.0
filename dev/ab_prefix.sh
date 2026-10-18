@@ -27,6 +27,10 @@
 #   AB_KEEP=1   keep the work files of the runs (stream copy, temp files)
 #   AB_JOBS=k   run up to k arms at the same time (default 1); each run takes
 #               one core and the memory of a coder run, see its peak RSS
+#   AB_REF_DIR=<dir>  compare every arm with the cost file of an earlier
+#               reference run in <dir> (a run directory of this script that
+#               coded at least <bytes>; a prefix of a longer run codes the same
+#               bits), instead of with the first arm
 #   AB_REF_DUMPS=1  the first arm also writes the stream copy (stream.bin) and,
 #               with AB_TFDUMP_FROM / AB_TFDUMP_LEN, a transformer dump
 #               (tfdump.bin); both are kept
@@ -111,11 +115,13 @@ while [ "$running" -gt 0 ]; do
 done
 [ "$failed" = 0 ] || { echo "ab_prefix.sh: at least one run failed" >&2; exit 1; }
 
-python3 -I - "$WORKDIR" "$n" <<'EOF'
+python3 -I - "$WORKDIR" "$n" "${AB_REF_DIR:-}" "$BYTES" <<'EOF'
 import os
 import sys
 
-workdir, n = sys.argv[1], int(sys.argv[2])
+import numpy as np
+
+workdir, n, ref_dir, nbytes = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
 rows = []
 for k in range(1, n + 1):
     with open(os.path.join(workdir, str(k), "result.txt")) as f:
@@ -123,7 +129,16 @@ for k in range(1, n + 1):
     with open(os.path.join(workdir, str(k), "tree.txt")) as f:
         rev, tree = f.read().split("\n")[:2]
     rows.append((k, tree, rev[:12], fields))
-ref = int(rows[0][3]["coded_bytes"])
+if ref_dir:
+    # the reference's coded size of this prefix, from its cost file (exact to
+    # the few bytes of the coder's flush) plus the 5-byte header
+    c = np.fromfile(os.path.join(ref_dir, "cost.u16"), dtype="<u2").reshape(-1, 8)
+    assert len(c) >= nbytes, "the reference run coded fewer bytes than this prefix"
+    ref = int(round(c[:nbytes].sum(dtype=np.float64) / 2048.0 / 8.0)) + 5
+    print("reference: %s, %d bytes for the first %d stream bytes (from its cost file)"
+          % (ref_dir, ref, nbytes))
+else:
+    ref = int(rows[0][3]["coded_bytes"])
 print("%-3s %-12s %12s %12s %10s %9s %9s  %s" % (
     "n", "commit", "stream B", "coded B", "delta B", "delta %", "loop s",
     "tree"))
@@ -136,11 +151,15 @@ print("peak RSS (GiB): " + "  ".join(
     "%d: %.2f" % (k, int(f["peak_rss_kb"]) / 1048576.0) for k, _t, _r, f in rows))
 EOF
 
-if [ "$n" -ge 2 ]; then
-  for k in $(seq 2 "$n"); do
+REFCOST="${AB_REF_DIR:+$AB_REF_DIR/cost.u16}"
+FIRST=2
+[ -n "$REFCOST" ] && FIRST=1
+REFCOST="${REFCOST:-$WORKDIR/1/cost.u16}"
+if [ "$n" -ge "$FIRST" ]; then
+  for k in $(seq "$FIRST" "$n"); do
     echo
-    echo "== costs of $k against 1, windows of ${AB_WINDOW:-1000000} B"
-    python3 -I "$HERE/cost_report.py" --diff "$WORKDIR/1/cost.u16" \
+    echo "== costs of $k against the reference, windows of ${AB_WINDOW:-1000000} B"
+    python3 -I "$HERE/cost_report.py" --diff "$REFCOST" \
       "$WORKDIR/$k/cost.u16" --window "${AB_WINDOW:-1000000}" --top 8
   done
 fi
