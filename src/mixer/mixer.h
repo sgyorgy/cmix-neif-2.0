@@ -33,6 +33,12 @@ struct ContextData {
   ContextData& operator=(ContextData&&) = default;
   //unsigned long long steps;
   arena_row_t weights, extra_weights;
+#if NEIF_ARM_ROWLR
+  // experiment arm (dev/README.md): updates of this row; the row's learning
+  // rate scales with 1.5 - steps / (steps of the busiest row), the per-row
+  // factor of Byron Knoll's cmix mixer, which this lineage dropped
+  unsigned int steps = 0;
+#endif
 
 };
 
@@ -78,6 +84,14 @@ class Mixer {
   float mxlr_g_;
   const unsigned long long& context_;
   unsigned long long /*max_steps_,*/ steps_;
+#if NEIF_ARM_ROWLR
+  unsigned int row_max_steps_ = 1;
+  float RowFactor(ContextData* d) {
+    const float f = 1.5f - (float)d->steps / (float)row_max_steps_;
+    if (++d->steps > row_max_steps_) row_max_steps_ = d->steps;
+    return f;
+  }
+#endif
   emhash6::HashMap<unsigned int, ContextData> context_map_;
   ContextData context_base_;
   ContextData* simd_cached_data_ = nullptr;

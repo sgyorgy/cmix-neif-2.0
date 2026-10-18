@@ -157,6 +157,9 @@ void Mixer::Perceive(int bit) {
   update = decay * update;
   update *= mxlr_g_;
   ContextData* data = primed ? primed : GetContextData();
+#if NEIF_ARM_ROWLR
+  update *= RowFactor(data);
+#endif
 
   mixw_t* const weights = &data->weights[0];
   const float* const inputs = &inputs_[0];
@@ -258,6 +261,9 @@ bool Mixer::BankPrepUpdate(int bit, float* update_out) {
   update = decay * update;
   update *= mxlr_g_;
   bank_data_ = primed ? primed : GetContextData();
+#if NEIF_ARM_ROWLR
+  update *= RowFactor(bank_data_);
+#endif
 
   *update_out = update;
   return true;
