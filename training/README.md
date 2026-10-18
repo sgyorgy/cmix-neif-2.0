@@ -455,6 +455,21 @@ row layout of the embedding (`embedding_rows` 216), the arm list of the training
 package, the `prior0` sha256, the window and the vocabulary bitmap. The manifest of
 the shipped weights is `tf/4_export/weights-poc8m_w2048.bin.json`.
 
+### Back from the container to a checkpoint
+
+The checkpoints of the shipped transformer are not part of this package.
+`tf/4_export/container_to_tch.py` turns the container back into a state_dict
+(`.npz`, torch free; `.tch` on a host with torch): every int4 row becomes
+`q * s` on the centre of its bin, every scale the fp32 value of its bf16 bits.
+The 86 zeroed rows get the scale 2^-24 instead of 0, the 70 dead neurons come
+back as zero rows and columns at the end of their layer, so that the chain
+removes both again. Before it writes anything the tool replays the export
+arithmetic and the four steps of `export.sh` in numpy; for the shipped
+container the result is byte for byte `ba982cd5…` again. The int4 noise of the
+removed rows and the latent offsets inside the bins are lost, so the
+checkpoint is a starting point for further QAT, not the state of the original
+run (the tool header says how to continue the QAT phase from it).
+
 ### Binding the weights to the compressor
 
 In the submitted package the container is appended to both executables, and
@@ -547,7 +562,7 @@ Authorship and licences: `ATTRIBUTION.md`.
 | `paket11_warmstart.py` | form-aware warm start |
 | `tf/1_dump/`, `tf/2_package/` | the patch with the coder-side modes and its build script, package builder (`mk_pkgdump.py`), the steps of the package build, acceptance tests |
 | `tf/3_train/` | the environment of every section of the chain, phase scripts, host setup, the lifting of subnormal rows |
-| `tf/4_export/` | bf16 rounding, container formats v3 and v4, removal of dead neurons, zeroing of collapsed rows |
+| `tf/4_export/` | bf16 rounding, container formats v3 and v4, removal of dead neurons, zeroing of collapsed rows, the way back from a container to a checkpoint (`container_to_tch.py`) |
 | `bitl/` | trace cut, replay trainer, bfloat16 conversion of the BITLSTM weights |
 | vocabulary 208 instead of 205 | the preprocessing of cmix-neif produces a different byte set |
 | training source | the coder's own fed-row dump instead of a reconstruction of the coder's rules |
