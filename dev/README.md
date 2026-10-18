@@ -47,6 +47,10 @@ can change the order of float operations, so that build is for time only.
   and of PPMd, and with the cost file of the same run that of the coder.
 * `fetch_enwik9.sh <dir> [<url>]` fetches `enwik9.zip` (default: the official
   location) and keeps `enwik9` only if its sha256 is `159b8535…`.
+* `sim_online.py <tfdump.bin> <cost.u16>` simulates online adaptation on the
+  transformer state (an online head adapter, LSH contexts of the hidden state)
+  and estimates the gain for the coder with a per-bit mixer proxy
+  (PLAN_10PCT.md 2.1).
 * `prefix_identity.sh <archive9> <archive9>` checks that two runs coded the
   same bits on their common prefix (a running `comp9 -e` or a stopped
   development run).
