@@ -353,8 +353,8 @@ fázishoz a teljes stream költségfájlja kell egy teljes futásból.
 | `TFCTX=3` (transformer-konfidencia a final mixer és a 24. mixer kontextusában) | 0 | +0.65 % | +0.44 % (ablakonként +0.58 → +0.17 %) | **+7,700 B (+0.218 %)** | no-go |
 | `TFFX=3` (a transformer bitje az fxcm 1./2. szintű mixereibe) | +0.01 % | +0.12 % | +0.196 % (egyenletes) | **+3,668 B (+0.104 %)** | no-go |
 | `ROWLR=1` (soronkénti mixer-tanulási ráta, a hint- és sorrend-blokk a kar saját segédprogramjával) | +0.02 % | −0.09 % | +0.051 % (ablakonként +0.11 → +0.04 %) | **+771 B (+0.022 %)** | no-go (a ritka kontextusok gyorsabb tanulása csak a redirect-blokkban fizet) |
-| `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | | | | fut | |
-| `TFCTX=1` (csak a final mixer sorai) | | | | sorban | |
+| `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | 0 | −0.004 % | +0.007 % (az utolsó 4 MB-on +0.011 %) | **+96 B (+0.003 %)** | semleges: a ráta ebben a tartományban alig számít |
+| `TFCTX=1` (csak a final mixer sorai) | | | | fut | |
 | `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | sorban | |
 
 Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre köti, bitekbe kerül —
@@ -368,16 +368,16 @@ Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre k
 | 1.1 TFCTX | 0 | 0 | −0.05 | 3: no-go; 1 és 4 sorban |
 | 1.2 APM/SSE | 0 | 0 | −0.02 | szimuláció: no-go |
 | 1.3 TFFX | 0 | 0 | 0 | 3: no-go |
-| 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | −0.03 | −0.15 | ROWLR: no-go; KFINAL fut |
+| 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | 0 | −0.02 | ROWLR: no-go; KFINAL=70: semleges |
 | 1.5 fxcm-küszöbök | 0 | −0.005 | −0.01 | itt nem mérhető |
 | 1.6 BITLSTM 100 %-on | −0.02 | −0.05 | −0.12 | teljes futás kell (trace) |
 | 1.7 metaadat | 0 | −0.02 | −0.1 | a CM közel a korláthoz |
 | 2. online adaptáció | 0 | 0 | −0.03 | no-go |
 | 3. ECQ + konténer | 0 | −0.3 | −1.0 | GPU-n; eszközök, recept, CPU smoke-teszt kész |
-| **részösszeg a mostani erőforrásokkal** | **−0.02** | **−0.4** | **−1.5** | |
+| **részösszeg a mostani erőforrásokkal** | **−0.02** | **−0.4** | **−1.35** | |
 | 4. CM-komplementer finomhangolás | 0 | −0.3 | −0.8 | GPU + egy teljes CPU-futás |
 | 5. nagy GPU-track | −2.0 | −4.0 | −6.5 | bérelt GPU kell |
-| **mindennel** | **−2.0 (2.1 %)** | **−4.7 (4.9 %)** | **−8.8 (9.2 %)** | |
+| **mindennel** | **−2.0 (2.1 %)** | **−4.7 (4.9 %)** | **−8.7 (9.0 %)** | |
 
 A −9.59 MB-os cél (10 %) ezzel a mérésállással a legjobb esetben sem jön ki; a CPU-oldali karok
 a mostani erőforrásokkal legfeljebb néhány tized MB-ot adnak, a döntő tétel a 3. fázis (GPU-n), és
