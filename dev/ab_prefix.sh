@@ -64,7 +64,7 @@ for arm in "$@"; do
   rm -rf "$d"
   mkdir -p "$d"
   echo "== build $n: $tree ${defs:+(defines: $defs)} ${weights:+(weights: $weights)}" >&2
-  DEV_DEFS="$defs" DEV_WEIGHTS="$weights" \
+  DEV_DEFS="$defs" DEV_WEIGHTS="$weights" DEV_MAP="$d/cmix_dev.map" \
     bash "$HERE/build_dev.sh" "$tree" "$COMP9" "$d/cmix_dev" $VARIANT >&2
   (cd "$tree" && git rev-parse HEAD 2>/dev/null || echo "not a git tree") > "$d/tree.txt"
   echo "$tree${defs:+ $defs}${weights:+ @$weights}" >> "$d/tree.txt"
@@ -92,7 +92,7 @@ run_arm() {
     echo "ab_prefix.sh: run $1 printed no result, see $d/run.out" >&2; return 1; }
   if [ "${AB_KEEP:-0}" != 1 ]; then
     find "$d" -mindepth 1 -maxdepth 1 ! -name cost.u16 ! -name 'run.*' \
-      ! -name result.txt ! -name tree.txt ! -name cmix_dev ! -name enwik9 \
+      ! -name result.txt ! -name tree.txt ! -name cmix_dev ! -name cmix_dev.map ! -name enwik9 \
       ! -name archive9 ! -name stream.bin ! -name tfdump.bin -exec rm -rf {} +
   fi
   echo "== run $1 done: $(cat "$d/result.txt")" >&2

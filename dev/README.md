@@ -42,7 +42,8 @@ can change the order of float operations, so that build is for time only.
   weight container (`build_dev.sh` stamps its FNV-1a-64 into the work copy of
   `src/transformer.h`).
 * `cost_report.py` costs per window, per bit position and per byte value of
-  one run, or the difference of two.
+  one run, or the difference of two (with `--diff` also split into the
+  metadata block, the redirect block and the article text of the prefix).
 * `tfdump.py` reads a transformer dump: cross entropy of the transformer slot
   and of PPMd, and with the cost file of the same run that of the coder.
 * `fetch_enwik9.sh <dir> [<url>]` fetches `enwik9.zip` (default: the official
@@ -61,6 +62,12 @@ can change the order of float operations, so that build is for time only.
 * `prefix_identity.sh <archive9> <archive9>` checks that two runs coded the
   same bits on their common prefix (a running `comp9 -e` or a stopped
   development run).
+* `prof_sample.sh <pid> <s> <run.err> <out>` and `prof_report.py <map> <out>`:
+  a sampling time profile of a running coder (gdb reads its program counter
+  every few seconds; the linker map of the same build, which `ab_prefix.sh`
+  keeps as `cmix_dev.map`, names the function), split by object file and
+  function, and by the progress of the run (`--from 44.22`: the article text
+  of a 20 MB prefix). It needs no extra run and does not change the coding.
 
 `ab_prefix.sh` runs up to `AB_JOBS` arms at once (default 1).
 
@@ -114,4 +121,10 @@ bash dev/ab_prefix.sh enwik9 40000000 work comp9 . .=-DNEIF_ARM_TFCTX=1 \
 ## Memory
 
 A coder run allocates its tables in full whatever the prefix, about 9.75 GiB.
-Two runs at once need about 20 GiB.
+Two runs at once need about 20 GiB. About 9.8 GB of a run cannot be reclaimed
+(5.65 GB anonymous, 4.19 GB shared memory); in a memory cgroup the rest of the
+limit is all that other jobs get, and when they cross it the kernel kills the
+largest process, the coder. On the 13.36 GiB cgroup of the development
+container that left 3.5 GB: start other jobs during a run with
+`sh -c 'echo 1000 > /proc/self/oom_score_adj; exec ...'` so that they go
+first.

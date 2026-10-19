@@ -16,6 +16,7 @@
 #
 # DEV_DEFS in the environment (e.g. DEV_DEFS="-DNEIF_ARM_X=1") is passed to
 # make: the defines of an experiment arm, added to every flag group.
+# DEV_MAP=<path> keeps the linker map of the image (dev/prof_report.py).
 # DEV_WEIGHTS=<container> replaces the weight container: its FNV-1a-64 is
 # stamped into the work copy of src/transformer.h (WeightsFingerprint) and it
 # is appended in place of the container of <comp9>.
@@ -73,6 +74,9 @@ fi
   echo "build_dev.sh: make $TARGET failed" >&2
   exit 1
 }
+# DEV_MAP=<path>: keep the linker map of the image, for dev/prof_report.py
+# (the data blocks appended below do not move the code)
+[ -n "${DEV_MAP:-}" ] && cp "$WORK/cmix.map" "$DEV_MAP"
 
 # The tail of comp9: hints, article order, weight container, then the 16-byte
 # header with their sizes (HeaderInfo of src/readalike_prepr/self_extract.h).

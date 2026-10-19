@@ -8,10 +8,17 @@ The cost file holds per stream byte 8 x u16, the coded cost of each bit
 
   python3 dev/cost_report.py <cost.u16> [--window B] [--stream <copy>]
   python3 dev/cost_report.py --diff <ref.u16> <arm.u16> [--window B] [--top N]
+                             [--regions A,B]
 
 --stream adds a split by byte class (the stream copy of NEIF_DEV_STREAM):
 the bytes of the frozen alphabet are text and markup of the preprocessed
 stream, so the classes are the code bytes of the stream form, not letters.
+
+--diff also splits the difference by region of the stream: the metadata
+block up to A, the redirect block up to B, the article text after it.  The
+defaults are the boundaries of this entry's stream (5164197: the first byte
+after the block; 8844000: "entering main text block" of a run's stderr,
+rounded).
 """
 
 import argparse
@@ -65,7 +72,7 @@ def report(path, window, stream_path):
                   % (v, cnt[v], tot[v] / 8, tot[v] / max(cnt[v], 1)))
 
 
-def diff(ref_path, arm_path, window, top):
+def diff(ref_path, arm_path, window, top, regions):
     a = byte_bits(load(ref_path))
     b = byte_bits(load(arm_path))
     n = min(len(a), len(b))
@@ -77,6 +84,14 @@ def diff(ref_path, arm_path, window, top):
     print("reference %.0f B, arm %.0f B, difference %+.0f B (%+.4f %%)"
           % (a.sum() / 8, b.sum() / 8, d.sum() / 8,
              100.0 * d.sum() / max(a.sum(), 1e-9)))
+    bounds = [0] + list(regions) + [n]
+    for name, lo, hi in zip(("metadata block", "redirect block", "article text"),
+                            bounds[:-1], bounds[1:]):
+        lo, hi = min(lo, n), min(hi, n)
+        if hi > lo:
+            print("  %-15s %10d..%-10d reference %10.0f B, delta %+8.0f B (%+.4f %%)"
+                  % (name, lo, hi, a[lo:hi].sum() / 8, d[lo:hi].sum() / 8,
+                     100.0 * d[lo:hi].sum() / max(a[lo:hi].sum(), 1e-9)))
     edges, sums = windows(d, window)
     _e, ref_sums = windows(a, window)
     print("%12s %12s %12s %10s" % ("from", "to", "delta B", "delta %"))
@@ -101,11 +116,15 @@ def main(argv):
     ap.add_argument("--window", type=int, default=1000000)
     ap.add_argument("--stream")
     ap.add_argument("--top", type=int, default=0)
+    ap.add_argument("--regions", default="5164197,8844000")
     args = ap.parse_args(argv[1:])
     if args.diff:
         if len(args.files) != 2:
             ap.error("--diff takes two cost files")
-        diff(args.files[0], args.files[1], args.window, args.top)
+        regions = [int(x) for x in args.regions.split(",")]
+        if len(regions) != 2 or not 0 < regions[0] < regions[1]:
+            ap.error("--regions takes two increasing positions")
+        diff(args.files[0], args.files[1], args.window, args.top, regions)
     else:
         if len(args.files) != 1:
             ap.error("one cost file, or --diff with two")
