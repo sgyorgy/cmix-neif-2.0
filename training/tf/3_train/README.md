@@ -187,7 +187,8 @@ entropy-constrained rounding (`tree_overlay/tft/ecq.py`).
    ```
    python3 tf/4_export/container_to_tch.py \
        ../weights-poc8m_w2048_p15f_v3bf16_gestrichen_v4.c4 models/poc8m_w2048-pkd.npz \
-       --tch models/poc8m_w2048-pkd.tch --manifest tf/4_export/weights-poc8m_w2048.bin.json
+       --tch models/poc8m_w2048-pkd.tch --manifest tf/4_export/weights-poc8m_w2048.bin.json \
+       --bin models/shipped-pkd.bin
    ```
 
    The tool first replays the export chain on the checkpoint and stops unless
@@ -214,7 +215,26 @@ entropy-constrained rounding (`tree_overlay/tft/ecq.py`).
    weights are moved to the centres of their ECQ levels (`ecq.bake`), so that
    the export, which rounds to nearest, writes those levels. The per-epoch
    checkpoints keep the latent weights; a resumed run installs ECQ again.
+   The 156 rows that are all zero in the container (86 collapsed rows, 70
+   dead neurons; scale 2^-24 in the checkpoint) are frozen, weights and
+   scale (`TFT_ECQ_FREEZE_ZERO_ROWS=0` lets them train): without that, one
+   AdamW step moved their scales 40-fold.
    `python -m tft.ecq_selftest` checks the quantizer on CPU.
+
+   **Before the GPU run, on any CPU host:** `cpu_smoke/ecq_smoke.py` builds
+   the qat model of arm `pkd` as `tft/runner.py` does, loads the checkpoint,
+   installs ECQ, runs two AdamW steps on one micro batch, bakes and exports
+   (fla replaced by the pure-torch references of `pysrc/kda_reference.py`,
+   sdpa attention). It needs the `--bin` file of step 1 as well:
+
+   ```
+   PYTHONPATH=tf/3_train/cpu_smoke/fla_cpu:<trainer tree> \
+     python3 tf/3_train/cpu_smoke/ecq_smoke.py models/poc8m_w2048-pkd.tch models/shipped-pkd.bin
+   ```
+
+   and ends with `SMOKE OK` (checked here with torch 2.14.1: no missing or
+   unexpected keys, finite gradients on all parameters and 311 scales, the
+   frozen rows unchanged, 3.7294 bits/weight at the start).
 
 3. **Measure**: `tf/4_export/export.sh` gives the container,
    `container_stats.py` its rate, and `dev/ab_prefix.sh` with the arm

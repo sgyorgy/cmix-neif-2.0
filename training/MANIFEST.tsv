@@ -59,7 +59,7 @@ tf/2_package/trim_inplace.py	this entry	6ffcb7f86e0476c6ffb5104879d32840b6ae2b67
 tf/2_package/vocab-bitmap.u8	this entry	d257fd4a869ca4f61d67bb487f4276517a4d81540098f76828403b298b29a70c	32	the frozen 208-value byte set, 32 B, popcount 208
 tf/2_package/warmstart.py	this entry	8f477cd798654e6ab559b02e48af2f2b1df3a6b360908a199f1cd8294fd836b4	9441	form-aware warm start (copied into the tree by patch_paket11.py)
 tf/2_package/zpdump.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	df42676f98ab15a60e26ab8bcb2a72d17ac93b465e300e3b2a6e8dea0f516e5d	15928	dump loader of the trainer (copied into the tree by patch_paket11.py)
-tf/3_train/README.md	this entry	b31003a3038d33ed68e5e6340e224613b6796633de5c03d84b7c30f1de06e183	12913	training chain: phase script, host setup or repair
+tf/3_train/README.md	this entry	adaa40f4e6b1698f1baae7ddd68187f0cf12e452c343a86ac27c38b3674b9df6	13967	training chain: phase script, host setup or repair
 tf/3_train/chain/01_anchor_w2048.env	this entry	344546f2e2b91229cec52b5fd5a3c1362cb9ccb1c55096371fc9bd7ef3b6ba6a	1127	environment of one run of the training chain
 tf/3_train/chain/02_w1024.env	this entry	5a3cd45fd759277cd5b8a15fcc28a3e0ae22ea688799e5225f0dd164c3a432d0	954	environment of one run of the training chain
 tf/3_train/chain/03_w1536.env	this entry	2114259c8136c99fe128d34e1aa71c0545f08b208fe24ac9c08ecc03efbbddcf	972	environment of one run of the training chain
@@ -82,6 +82,13 @@ tf/3_train/probe_row_max.py	this entry	1784927bb91928dcf78e1ea7226726f3ea8d2d98f
 tf/3_train/qat_arm.sh	this entry	11dcf703bff96f755ecdd820018c2e8b26890717c279d2bfecc9d049b1ef96a5	1912	training chain: phase script, host setup or repair
 tf/3_train/setup_host.sh	this entry	4ae08a00ab4ee21172bfcdbddbb15999273dec5360e23d7ce88a4a248c5ac9b6	16077	training chain: phase script, host setup or repair
 tf/3_train/wiederanlauf.sh	this entry	80a4e6e37229c76a1a41268e6f43a3d69bb434f52ecdaf0ec03b6d422a71d856	3186	training chain: phase script, host setup or repair
+tf/3_train/cpu_smoke/ecq_smoke.py	this entry	2098df1a3af6287d559bf3dd33f80fdb74a13ff5b183b1876a6661c1d4652f78	7674	CPU smoke test of the qat phase with ECQ on the shipped transformer: load, two AdamW steps, bake, export
+tf/3_train/cpu_smoke/fla_cpu/fla/__init__.py	this entry	0ed6f5ad597f5c0ca9bb0ebe8fa2674bcb13a22d33953d5404603e51734396ef	217	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
+tf/3_train/cpu_smoke/fla_cpu/fla/ops/__init__.py	this entry	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	0	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
+tf/3_train/cpu_smoke/fla_cpu/fla/ops/kda/__init__.py	this entry	7891f8839eb1df31720d99660af790379ada731b1a36cb7b12624c4e8e184f13	776	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
+tf/3_train/cpu_smoke/fla_cpu/fla/modules/__init__.py	this entry	93c20f9000c57e23e3083cb1af4515ede32f51d01db6938e071fdb474bd30313	564	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
+tf/3_train/cpu_smoke/fla_cpu/fla/modules/conv/__init__.py	this entry	e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855	0	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
+tf/3_train/cpu_smoke/fla_cpu/fla/modules/conv/causal_conv1d.py	this entry	95aed8d0cdda6f4f6b9b89aae4bd800064fcbd9e61702fee911c08ab76616f7d	441	CPU stand-in for fla used by the smoke test (pure-torch references of pysrc/kda_reference.py)
 tf/4_export/container_stats.py	this entry	ec6cbd92a738e5ce11c415db617a69fd54fa600c1c4572a4b11c6a083c37a819	5434	level statistics of the int4 tensors of a container (entropy, clip share per tensor family), read only
 tf/4_export/container_to_tch.py	this entry	da52bcb0e9731d3eadf2fa16340a0ce73ba25a8196d8d9f1b4d9b427e9be312b	23366	container back to a training checkpoint (.npz state_dict, optional .tch/.bin); proves the conversion by replaying the export chain to the byte identical container
 tf/4_export/convert_container_v4.py	this entry	b5263160a18e126dd7ba672eb193650659e554b23e5e5ae846b0bc00469d3553	8038	zeroes the rows of collapsed attention channels, writes format v4
@@ -100,8 +107,8 @@ tf/tree_overlay/tft/calibrate.py	this entry, derived from fx2-cmix-transformer (
 tf/tree_overlay/tft/config.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	7a70070ed4f7198ba4295327546e39ce16087c2edb13cc9358a8b042c80bd2cb	13842	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/cooldown_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	c97853eddf9ea7e4a40bc66c8caa29f39ddaa0941b998f9e490edfa87d599960	533	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/dataset.py	this entry	9e51b6bb41393493260b59d5f4b4afd9a3a1f4e5bb5578eeb196c7f8243d5e6d	12408	geometry registry, dataset checks, runner, export with manifest
-tf/tree_overlay/tft/ecq.py	this entry	c222baac38cef2da7d5ae56e0a8a91b83946b66650085dd5b70b418f81d62535	14803	entropy-constrained rounding of the int4 weights in QAT, rate term at the score's exchange rate, bake to level centres (PLAN_10PCT.md phase 3)
-tf/tree_overlay/tft/ecq_selftest.py	this entry	2287d2fadaf662058b920cf987eca59edefe2a5cb98d67f34c77f4d9d098861c	8318	CPU self-test of ecq.py: lambda 0 equals QuantizeFunction, one histogram step per optimizer step, bake, rate gradient
+tf/tree_overlay/tft/ecq.py	this entry	c26afa078313c47ca0cb78b38c31425235043a7f880133cf29ec70527a54829a	16899	entropy-constrained rounding of the int4 weights in QAT, rate term at the score's exchange rate, bake to level centres (PLAN_10PCT.md phase 3)
+tf/tree_overlay/tft/ecq_selftest.py	this entry	5e7d0955d10a4d16afc64011e148ab28038ba86d1cede7bc4f1ded50989320e4	10077	CPU self-test of ecq.py: lambda 0 equals QuantizeFunction, one histogram step per optimizer step, bake, rate gradient, frozen all-zero rows
 tf/tree_overlay/tft/export_weights_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	ff5331fc22970885e23a772d88a274f6f749f026e15e704d2827f21eda2f6b19	21483	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/param_count.py	this entry	6a682fa2170e0c915631015c88af2c470d3e5306c0a37ef3c09630c87b7dc090	25329	geometry registry, dataset checks, runner, export with manifest
 tf/tree_overlay/tft/quantize_poc.py	this entry, derived from fx2-cmix-transformer (V. Ivanov)	a1abf1abe51a3a2d4b1df0d5aff593d20a2c04804bad74404e29b2e606fd9183	354	geometry registry, dataset checks, runner, export with manifest

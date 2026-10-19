@@ -11,7 +11,11 @@ them:
      version counter of the weights; repeated forward passes count once);
   4. bake: round to nearest on the baked weights gives the chosen levels;
   5. the rate term: with no loss gradient the scale gradient is exactly
-     -c * d_in / (s ln 2) under his LSQ normalisation.
+     -c * n / (s ln 2) under his LSQ normalisation, n = the row's weights off
+     level 0;
+  6. an all-zero row (as tf/4_export/container_to_tch.py writes them, scale
+     2^-24): no rate term, and frozen, it keeps weights and scale through an
+     AdamW step that moves the other rows.
 """
 
 from __future__ import annotations
@@ -176,10 +180,43 @@ def check_rate_term() -> None:
     q = o.quantize_weight
     s = q.scale.detach().to(torch.bfloat16).float()
     d_out, d_in = o.weight.shape
-    want = -c * d_in / (s * math.log(2.0)) / math.sqrt(d_out * d_in * q.quant.qmax)
+    n_off = (ecq.levels_of(o, q) != 0).sum(-1).view(-1).float()
+    assert bool((n_off < d_in).any()), "test weights without level-0 entries"
+    want = -c * n_off / (s * math.log(2.0)) / math.sqrt(d_out * d_in * q.quant.qmax)
     assert torch.allclose(q.scale.grad, want, rtol=1e-6, atol=0.0), "rate gradient"
     assert bool((q.scale.grad < 0).all()), "the rate term must push the scales up"
-    print("5. rate term: scale gradient -c d_in / (s ln 2), LSQ normalised")
+    print("5. rate term: scale gradient -c n / (s ln 2), LSQ normalised")
+
+
+def check_zero_rows() -> None:
+    c = 1e-3
+    for freeze in (False, True):
+        m = Model()
+        o = m.a
+        with torch.no_grad():
+            o.weight[3].zero_()
+            o.quantize_weight.scale[3] = 2.0 ** -24
+        ecq.install(m, 0.1, verbose=False, rate_coeff=c, freeze_zero_rows=freeze)
+        q = o.quantize_weight
+        o.train()
+        out = o()
+        out.backward(torch.zeros_like(out))      # the rate term alone
+        assert float(q.scale.grad[3]) == 0.0, "rate term on an all-zero row"
+        assert bool((q.scale.grad[:3] < 0).all()), "rate term missing on the other rows"
+        if not freeze:
+            continue
+        w0, s0 = o.weight.detach().clone(), q.scale.detach().clone()
+        opt = torch.optim.AdamW(o.parameters(), lr=1e-3, weight_decay=0.0)
+        for _ in range(3):
+            opt.zero_grad()
+            out = o()
+            out.backward(torch.randn_like(out))
+            opt.step()
+        assert torch.equal(o.weight[3].detach(), w0[3]), "frozen row: weights moved"
+        assert torch.equal(q.scale[3].detach(), s0[3]), "frozen row: scale moved"
+        assert not torch.equal(o.weight.detach(), w0), "the other rows did not move"
+        assert int(ecq.levels_of(o, q).view(o.weight.shape)[3].abs().sum()) == 0
+    print("6. all-zero rows: no rate term; frozen, they keep weights and scale")
 
 
 def main() -> None:
@@ -189,6 +226,7 @@ def main() -> None:
     check_versions()
     check_bake()
     check_rate_term()
+    check_zero_rows()
     print("ecq self-test passed")
 
 

@@ -47,8 +47,20 @@ mu * (bits of all int4 levels).  The archive grows by about 41 KB per 0.001
 nat/token (training/tf/tree_overlay/zctx/eval_zctx.py) and a bit of the
 container costs 2/8 B of S (it ships twice), so mu = 0.25 / 41e6 = 6.1e-9
 prices the two alike.  The term enters the gradient of every row scale as
--mu * d_in / (s ln 2), scaled to the sum-of-tokens loss of pysrc/train.py, and
-with his LSQ normalisation like the rest of that gradient.
+-mu * n / (s ln 2), scaled to the sum-of-tokens loss of pysrc/train.py, and
+with his LSQ normalisation like the rest of that gradient.  n counts the
+weights of the row off level 0: a weight on level 0 stays there when s grows,
+and a row with all levels 0 pays the same whatever its scale.  (With d_in in
+place of n, the term pushed the scales of such rows up by one AdamW step,
+about lr, per optimizer step: the zero rows of a container checkpoint start
+at s = 2^-24, see tf/4_export/container_to_tch.py, and grew 40-fold in one
+step of the CPU smoke test.)
+
+Rows whose latent weights are all zero when install() runs (the zeroed rows
+and dead neurons of the shipped container) are frozen by default: hooks zero
+the gradients of their weights and of their scale, so they stay what the
+container has.  Without the hooks the straight-through gradient moves their
+weights by about lr per step, which at s = 2^-24 is a jump to level +-7.
 
 Switches (tft/runner.py reads them through install_from_env):
   TFT_ECQ_LAMBDA   lambda; unset or empty: ECQ off
@@ -58,6 +70,7 @@ Switches (tft/runner.py reads them through install_from_env):
   TFT_ECQ_SCOPE    "tensor" (one histogram per tensor, the default) or "global"
                    (one for all; the container's coder adapts within a tensor,
                    so "tensor" is closer to what it pays)
+  TFT_ECQ_FREEZE_ZERO_ROWS  "0" lets the all-zero rows train (default "1")
 """
 
 from __future__ import annotations
@@ -135,9 +148,11 @@ class ECQFunction(Function):
                  + within.type_as(g) * (levels - scaled))
         ).sum(0).sum(-1)
         if ctx.rate_coeff:
-            # d/ds of rate_coeff * (bits of the row) = -rate_coeff * d_in / (s ln 2)
+            # d/ds of rate_coeff * (bits of the row) = -rate_coeff * n / (s ln 2),
+            # n = the row's weights off level 0 (see the module docstring)
             s = scale.reshape(-1)
-            grad_scale = grad_scale - ctx.rate_coeff * scaled.size(-1) / (s * math.log(2.0))
+            n_off = (levels != 0).type_as(g).sum(0).sum(-1)
+            grad_scale = grad_scale - ctx.rate_coeff * n_off / (s * math.log(2.0))
         grad_scale = grad_scale / math.sqrt(scaled.numel() * quant.qmax)
         return (grad_input.to(grad_dtype), grad_scale.to(grad_dtype),
                 None, None, None, None)
@@ -224,15 +239,36 @@ def _nearest_hist(owner: torch.nn.Module, q: Quantize) -> Tensor:
                           minlength=LEVELS).double()
 
 
+@torch.no_grad()
+def _freeze_zero_rows(owner: torch.nn.Module, q: Quantize) -> int:
+    """gradient hooks that keep the rows with all latent weights zero (weights
+    and scale) as they are; returns the number of such rows"""
+    blocks = q.reshape_input(owner.weight)             # a view: (1, rows, d_in)
+    zero = (blocks == 0).all(dim=-1)
+    n = int(zero.sum())
+    if n == 0:
+        return 0
+    keep = ~zero
+    keep_w = keep.unsqueeze(-1).expand_as(blocks).reshape(owner.weight.shape)
+    keep_w = keep_w.to(owner.weight.dtype)
+    keep_s = keep.reshape(q.scale.shape).to(q.scale.dtype)
+    owner.weight.register_hook(lambda g, m=keep_w: g * m.to(g.dtype))
+    q.scale.register_hook(lambda g, m=keep_s: g * m.to(g.dtype))
+    return n
+
+
 def install(model: torch.nn.Module, lam: float, decay: float = 0.98,
             scope: str = "tensor", verbose: bool = True,
-            rate_coeff: float = 0.0) -> int:
+            rate_coeff: float = 0.0, freeze_zero_rows: bool = True) -> int:
     """ECQ on every 15-level weight quantizer of `model`; returns their number.
     The histograms start from round to nearest on the current weights.
-    rate_coeff multiplies d(bits)/d(scale) in every backward pass (0: off)."""
+    rate_coeff multiplies d(bits)/d(scale) in every backward pass (0: off).
+    freeze_zero_rows: rows whose latent weights are all zero now keep their
+    weights and scale (module docstring)."""
     assert lam >= 0 and 0 < decay < 1 and scope in ("tensor", "global")
     assert rate_coeff >= 0
     found = list(weight_quantizers(model))
+    frozen = sum(_freeze_zero_rows(o, q) for _n, o, q in found) if freeze_zero_rows else 0
     shared = None
     if scope == "global":
         total = sum((_nearest_hist(o, q) for _n, o, q in found),
@@ -257,8 +293,9 @@ def install(model: torch.nn.Module, lam: float, decay: float = 0.98,
         bits, n = rate(model)
         print("ecq: lambda %g, decay %g, scope %s, rate coefficient %g, %d "
               "quantizers, %d weights, start %.4f bits/weight (%.0f B at the "
-              "order-0 bound)" % (lam, decay, scope, rate_coeff, len(found), n,
-                                  bits / max(n, 1), bits / 8), flush=True)
+              "order-0 bound), %d all-zero rows frozen"
+              % (lam, decay, scope, rate_coeff, len(found), n, bits / max(n, 1),
+                 bits / 8, frozen), flush=True)
     return len(found)
 
 
@@ -274,7 +311,8 @@ def install_from_env(model: torch.nn.Module, loss_tokens: int = 1,
     mu = float(os.environ.get("TFT_ECQ_RATE_MU", "0"))
     install(model, float(lam), float(os.environ.get("TFT_ECQ_DECAY", "0.98")),
             os.environ.get("TFT_ECQ_SCOPE", "tensor"), verbose,
-            rate_coeff=mu * float(loss_tokens) / float(accumulation))
+            rate_coeff=mu * float(loss_tokens) / float(accumulation),
+            freeze_zero_rows=os.environ.get("TFT_ECQ_FREEZE_ZERO_ROWS", "1") != "0")
     return True
 
 
