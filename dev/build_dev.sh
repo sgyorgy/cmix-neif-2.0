@@ -17,6 +17,12 @@
 # DEV_DEFS in the environment (e.g. DEV_DEFS="-DNEIF_ARM_X=1") is passed to
 # make: the defines of an experiment arm, added to every flag group.
 # DEV_MAP=<path> keeps the linker map of the image (dev/prof_report.py).
+# DEV_AUX=1 also builds the helper with the arm's defines (make cmix_devaux)
+# and codes the hint package and the article order with it, in place of the
+# blocks of <comp9>: needed by an arm that changes the plain CM (a mixer
+# rule), which cannot decode the submitted blocks ("dictionary hints:
+# derivation failed").  The helper allocates the full model: it must not
+# run beside a coder run.
 # DEV_WEIGHTS=<container> replaces the weight container: its FNV-1a-64 is
 # stamped into the work copy of src/transformer.h (WeightsFingerprint) and it
 # is appended in place of the container of <comp9>.
@@ -78,19 +84,50 @@ fi
 # (the data blocks appended below do not move the code)
 [ -n "${DEV_MAP:-}" ] && cp "$WORK/cmix.map" "$DEV_MAP"
 
+AUX_HINTS=""
+AUX_ORDER=""
+if [ "${DEV_AUX:-0}" = 1 ]; then
+  (cd "$WORK" && env -i \
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+      HOME="$WORK" TMPDIR="$WORK/tmp" LC_ALL=C LANG=C TZ=UTC \
+      make CC=clang++-18 CFLAGS_DEFINES="-DSEED=923 -DUPDATE_LIMIT=3000" \
+      DEV_DEFS="${DEV_DEFS:-}" cmix_devaux -j > "$WORK/make_aux.log" 2>&1) || {
+    tail -30 "$WORK/make_aux.log" >&2
+    echo "build_dev.sh: make cmix_devaux failed" >&2
+    exit 1
+  }
+  (cd "$WORK" && ./cmix_devaux -c dictionary/english.hints comp_hints > aux.log 2>&1 &&
+     ./cmix_devaux -c src/readalike_prepr/data/new_article_order comp_order >> aux.log 2>&1) || {
+    tail -20 "$WORK/aux.log" >&2
+    echo "build_dev.sh: the helper could not code the blocks" >&2
+    exit 1
+  }
+  AUX_HINTS="$WORK/comp_hints"
+  AUX_ORDER="$WORK/comp_order"
+fi
+
 # The tail of comp9: hints, article order, weight container, then the 16-byte
 # header with their sizes (HeaderInfo of src/readalike_prepr/self_extract.h).
-python3 -I - "$COMP9" "$WORK/$TARGET" "$OUT" "${DEV_WEIGHTS:-}" <<'EOF'
+python3 -I - "$COMP9" "$WORK/$TARGET" "$OUT" "${DEV_WEIGHTS:-}" "$AUX_HINTS" "$AUX_ORDER" <<'EOF'
 import struct
 import sys
 
-comp9, binary, out, weights = sys.argv[1:5]
+comp9, binary, out, weights, aux_hints, aux_order = sys.argv[1:7]
 with open(comp9, "rb") as f:
     c9 = f.read()
 d, o, z, w = struct.unpack("<4i", c9[-16:])
 assert z == 0 and d > 0 and o > 0 and w > 0, (d, o, z, w)
 assert d + o + w + 16 < len(c9), "comp9 is shorter than its blocks"
 blocks = c9[-(d + o + w + 16):-(w + 16)]          # hints, order
+if aux_hints:                                     # DEV_AUX=1: the arm's own blocks
+    with open(aux_hints, "rb") as f:
+        hints = f.read()
+    with open(aux_order, "rb") as f:
+        order = f.read()
+    assert len(hints) >= 1024 and len(order) >= 1024, "the helper wrote empty blocks"
+    print("blocks of the arm's helper: hints %d B (comp9 %d), order %d B (comp9 %d)"
+          % (len(hints), d, len(order), o))
+    blocks, d, o = hints + order, len(hints), len(order)
 if weights:
     with open(weights, "rb") as f:
         container = f.read()

@@ -7,6 +7,7 @@
 #   make cmix_dev    development build with the measurement hooks of
 #                    src/neif_dev.h (NOT shipped; dev/README.md)
 #   make cmix_devtime  the same with cycle counters (NOT shipped)
+#   make cmix_devaux   the build helper with an arm's defines (NOT shipped)
 #   make sstrip      the section-header stripper used when packing
 #   make clean
 #
@@ -166,7 +167,7 @@ clean:
 
 all: cmix
 
-.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux cmix_dev cmix_devtime fast slow cold
+.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux cmix_dev cmix_devtime cmix_devaux fast slow cold
 
 
 # The BUILD HELPER.  It is compiled from the same sources with AUX_BUILD=1 and
@@ -220,3 +221,21 @@ cmix_devtime: WORDLBL_CXXFLAGS                  += -DNEIF_DEV=1 -DNEIF_DEV_TIME=
 cmix_devtime: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
 cmix_devtime: clean cmix
 	mv cmix cmix_devtime
+
+# The build helper with the defines of an experiment arm (dev/build_dev.sh
+# DEV_AUX=1).  The hint package and the article order are coded by the plain
+# CM; an arm that changes it (a mixer rule, say) cannot decode the blocks of
+# the submitted comp9 and needs them coded by its own helper.
+cmix_devaux: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DAUX_BUILD=1 $(DEV_DEFS)
+cmix_devaux: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -flto -DAUX_BUILD=1 $(DEV_DEFS)
+cmix_devaux: CPPFLAGS_PART-THAT-IS-COLD        += -fprofile-use=$(ROOT_DIR)/pgo_data $(DEV_PGO_QUIET) -DAUX_BUILD=1 $(DEV_DEFS)
+cmix_devaux: TF1_CXXFLAGS                      += $(DEV_DEFS)
+cmix_devaux: BITL_CXXFLAGS                     += $(DEV_DEFS)
+cmix_devaux: ADEPTHDET_CXXFLAGS                += $(DEV_DEFS)
+cmix_devaux: DETNUM_CXXFLAGS                   += $(DEV_DEFS)
+cmix_devaux: S26VEC_CXXFLAGS                   += $(DEV_DEFS)
+cmix_devaux: OPT1VEC_CXXFLAGS                  += $(DEV_DEFS)
+cmix_devaux: WORDLBL_CXXFLAGS                  += $(DEV_DEFS)
+cmix_devaux: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
+cmix_devaux: clean cmix
+	mv cmix cmix_devaux
