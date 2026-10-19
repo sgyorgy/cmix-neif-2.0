@@ -80,8 +80,10 @@ extern int lstmpr, lstmex;
 // the transformer slot's prediction of the current bit, 1..4095 like lstmpr.
 //   & 1  an internal input of the 18 first-layer mixers
 //   & 2  an internal input of the second-layer mixers
-//   & 4  an APM on it, in the context of the partial byte and of fxcm's own
-//        prediction, as one more fxcm output
+//   & 4  an APM on it, in the context of the partial byte and the last byte,
+//        as one more internal input of the first-layer mixers (an fxcm output
+//        column does not fit: fxcm fills 555 of its 557, and the main
+//        predictor needs two free ones)
 #ifndef NEIF_ARM_TFFX
 #define NEIF_ARM_TFFX 0
 #endif
@@ -4021,7 +4023,7 @@ APM<18>  apmA3;
 APM<17>  apmA4;
 APM<17>  apmA5;
 #if NEIF_ARM_TFFX & 4
-APM<13>  apmTf;
+APM<16>  apmTf;
 #endif
 
 RunContextMap rcmA[1];
@@ -6289,6 +6291,9 @@ GLUE_ATTR int modelPrediction() {
 #if NEIF_ARM_TFFX & 1
     x.mxInputs1.add_internal(stretch(tfpr));
 #endif
+#if NEIF_ARM_TFFX & 4
+    x.mxInputs1.add_internal(stretch(apmTf.p(tfpr, x.c0 + (c1 << 8), 7, x.y)));
+#endif
 
     for (int i=0;i<18;i++) mxA[i].pf();
     for (int i=0;i<5;i++)  mxA1[i].pf();
@@ -6417,9 +6422,6 @@ GLUE_ATTR void predict_half() {
     AddPrediction(stretch(pt));
     pz=apmA5.p(pu,   ((x.c0*4)^hash(min(9,pz),x5&0x80ff)), rate,x.y);
     AddPrediction(stretch(pz));
-#if NEIF_ARM_TFFX & 4
-    AddPrediction(stretch(apmTf.p(tfpr, x.c0 + ((pr >> 7) << 8), rate, x.y)));
-#endif
     if (fails&255) pr=(pt*6+pu  +pv*11+pz*14 +31)>>5;
     else           pr=(pt*4+pu*7+pv*12+pz*9 +31)>>5;
     AddPrediction(stretch(pr));

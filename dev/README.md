@@ -94,7 +94,7 @@ tree:
 | `NEIF_ARM_TFCTX=3` | both | same |
 | `NEIF_ARM_TFFX=1` | the transformer slot's prediction of the current bit as an internal input of the 18 first-layer mixers of fxcm (today only the byte LSTM's is) | `src/models/fxcmv1.cpp`, `src/predictor.cpp` |
 | `NEIF_ARM_TFFX=2` | the same for the second-layer mixers of fxcm | same |
-| `NEIF_ARM_TFFX=4` | an APM on that prediction, in the context of the partial byte and of fxcm's own prediction, as one more fxcm output | same |
+| `NEIF_ARM_TFFX=4` | an APM on that prediction, in the context of the partial byte and the last byte, as one more internal input of the first-layer mixers of fxcm (as an fxcm output it did not fit: fxcm fills 555 of its 557 columns, the predictor needs two free) | same |
 | `NEIF_ARM_ROWLR=1` | a per-row learning rate in every mixer: the update of a weight row is scaled by 1.5 - (its updates) / (updates of the busiest row), the per-row factor of the original cmix mixer that this lineage dropped; rare contexts learn faster | `src/mixer/mixer.h`, `src/mixer/mixer.cpp` |
 
 The bits of `NEIF_ARM_TFFX` combine (`=7`: all three). The first layer of
