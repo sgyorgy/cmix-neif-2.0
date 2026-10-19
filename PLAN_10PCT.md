@@ -352,8 +352,8 @@ fázishoz a teljes stream költségfájlja kell egy teljes futásból.
 |---|---:|---:|---:|---:|---|
 | `TFCTX=3` (transformer-konfidencia a final mixer és a 24. mixer kontextusában) | 0 | +0.65 % | +0.44 % (ablakonként +0.58 → +0.17 %) | **+7,700 B (+0.218 %)** | no-go |
 | `TFFX=3` (a transformer bitje az fxcm 1./2. szintű mixereibe) | +0.01 % | +0.12 % | +0.196 % (egyenletes) | **+3,668 B (+0.104 %)** | no-go |
-| `ROWLR=1` (soronkénti mixer-tanulási ráta) | | | | fut | |
-| `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | | | | sorban | |
+| `ROWLR=1` (soronkénti mixer-tanulási ráta, a hint- és sorrend-blokk a kar saját segédprogramjával) | +0.02 % | −0.09 % | +0.051 % (ablakonként +0.11 → +0.04 %) | **+771 B (+0.022 %)** | no-go (a ritka kontextusok gyorsabb tanulása csak a redirect-blokkban fizet) |
+| `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | | | | fut | |
 | `TFCTX=1` (csak a final mixer sorai) | | | | sorban | |
 | `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | sorban | |
 
@@ -368,7 +368,7 @@ Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre k
 | 1.1 TFCTX | 0 | 0 | −0.05 | 3: no-go; 1 és 4 sorban |
 | 1.2 APM/SSE | 0 | 0 | −0.02 | szimuláció: no-go |
 | 1.3 TFFX | 0 | 0 | 0 | 3: no-go |
-| 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | −0.03 | −0.15 | mérés fut |
+| 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | −0.03 | −0.15 | ROWLR: no-go; KFINAL fut |
 | 1.5 fxcm-küszöbök | 0 | −0.005 | −0.01 | itt nem mérhető |
 | 1.6 BITLSTM 100 %-on | −0.02 | −0.05 | −0.12 | teljes futás kell (trace) |
 | 1.7 metaadat | 0 | −0.02 | −0.1 | a CM közel a korláthoz |
