@@ -7,7 +7,12 @@
 // there.
 namespace mixdecay {
 
+#ifndef NEIF_ARM_KFINAL
 constexpr int kPromille{100};
+#else
+// experiment arm (dev/README.md): another final step, in per mille
+constexpr int kPromille{NEIF_ARM_KFINAL};
+#endif
 static_assert(kPromille > 0 && kPromille <= 1000,
               "is PER MILLE (1..1000), e.g. 100 = 0.1");
 
