@@ -130,13 +130,26 @@ for k in range(1, n + 1):
         rev, tree = f.read().split("\n")[:2]
     rows.append((k, tree, rev[:12], fields))
 if ref_dir:
-    # the reference's coded size of this prefix, from its cost file (exact to
-    # the few bytes of the coder's flush) plus the 5-byte header
-    c = np.fromfile(os.path.join(ref_dir, "cost.u16"), dtype="<u2").reshape(-1, 8)
-    assert len(c) >= nbytes, "the reference run coded fewer bytes than this prefix"
-    ref = int(round(c[:nbytes].sum(dtype=np.float64) / 2048.0 / 8.0)) + 5
-    print("reference: %s, %d bytes for the first %d stream bytes (from its cost file)"
-          % (ref_dir, ref, nbytes))
+    # the reference's coded size of this prefix: its own result if it coded
+    # exactly this prefix, else the sum of its cost file plus the 5-byte header.
+    # The u16 costs round small costs down: the sum is about 630 B short per
+    # 20 MB, so the delta column then carries that bias; the cost comparison
+    # below has none (both sides rounded alike).
+    ref = None
+    rpath = os.path.join(ref_dir, "result.txt")
+    if os.path.exists(rpath):
+        with open(rpath) as f:
+            rf = dict(x.split("=") for x in f.read().split()[1:])
+        if int(rf["stream_bytes"]) == nbytes:
+            ref = int(rf["coded_bytes"])
+            print("reference: %s, %d bytes for the first %d stream bytes (its result)"
+                  % (ref_dir, ref, nbytes))
+    if ref is None:
+        c = np.fromfile(os.path.join(ref_dir, "cost.u16"), dtype="<u2").reshape(-1, 8)
+        assert len(c) >= nbytes, "the reference run coded fewer bytes than this prefix"
+        ref = int(round(c[:nbytes].sum(dtype=np.float64) / 2048.0 / 8.0)) + 5
+        print("reference: %s, %d bytes for the first %d stream bytes (from its cost "
+              "file, about 630 B per 20 MB short)" % (ref_dir, ref, nbytes))
 else:
     ref = int(rows[0][3]["coded_bytes"])
 print("%-3s %-12s %12s %12s %10s %9s %9s  %s" % (
