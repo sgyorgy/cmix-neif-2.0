@@ -51,6 +51,11 @@ can change the order of float operations, so that build is for time only.
   transformer state (an online head adapter, LSH contexts of the hidden state)
   and estimates the gain for the coder with a per-bit mixer proxy
   (PLAN_10PCT.md 2.1).
+* `sim_final.py <tfdump.bin> <cost.u16>` tests the coder's final stage on the
+  same data: an APM behind the coder keyed by the transformer state, an online
+  re-mix of the coder with PPMd and the transformer under confidence-selected
+  weight sets, and the slot under a temperature or a linear PPMd mix
+  (PLAN_10PCT.md 1.2, section 10).
 * `meta_report.py <stream.bin> <cost.u16>` splits the cost of the metadata
   block by field (page-id delta, revid, restrictions, timestamps, names, uids).
 * `prefix_identity.sh <archive9> <archive9>` checks that two runs coded the
