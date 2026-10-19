@@ -355,17 +355,23 @@ fázishoz a teljes stream költségfájlja kell egy teljes futásból.
 | `ROWLR=1` (soronkénti mixer-tanulási ráta, a hint- és sorrend-blokk a kar saját segédprogramjával) | +0.02 % | −0.09 % | +0.051 % (ablakonként +0.11 → +0.04 %) | **+771 B (+0.022 %)** | no-go (a ritka kontextusok gyorsabb tanulása csak a redirect-blokkban fizet) |
 | `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | 0 | −0.004 % | +0.007 % (az utolsó 4 MB-on +0.011 %) | **+96 B (+0.003 %)** | semleges: a ráta ebben a tartományban alig számít |
 | `TFCTX=1` (csak a final mixer sorai) | 0 | +0.52 % | +0.233 % (ablakonként +0.46 → +0.14 %, az utolsó kettő ellaposodik) | **+6,134 B (+0.174 %)** | no-go: a 9 felé osztott final mixer lassabban tanul; ez adja a TFCTX=3 veszteségének javát |
-| `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | fut | |
+| `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | 0 | +0.04 % | +0.007 % | **+290 B (+0.008 %)** | semleges, nyereség nincs |
 
-Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre köti, bitekbe kerül —
-összhangban azzal, hogy a coder a kettőt már optimálisan keveri (1.2); az fxcm független modellként
-ér többet.
+A `TFFX=4` (APM a transformer bitjén, fxcm-bemenetként) nem futott: a `TFFX=3` tartós vesztesége
+után ugyanaz a mechanizmus volt várható.
+
+**Tanulság:** a hat mért kar egyike sem nyer. Minden változtatás, amely a CM egy részét a
+transformerre köti, bitekbe kerül (a final mixer felosztása lassabban tanul, az fxcm a transformer
+bemenetétől veszít a függetlenségéből), a mixer-ráták pedig ebben a tartományban alig számítanak —
+összhangban az 1.2 szimulációival: a coder a transformert és a CM-et már optimálisan keveri. A
+CPU-oldali karok, amelyeket ez a környezet mérni tud, kimerültek; a megmaradtak (1.5 küszöbök, 1.6
+BITLSTM a teljes streamen, a 4. fázis adatai) teljes futást igényelnek (~111 h itt, ~49 h a c2d-n).
 
 ### Módosított nyereség-költségvetés (MB S; low / mid / high)
 
 | kar | low | mid | high | állapot |
 |---|---:|---:|---:|---|
-| 1.1 TFCTX | 0 | 0 | −0.05 | 3: no-go; 1 és 4 sorban |
+| 1.1 TFCTX | 0 | 0 | 0 | 3, 1: no-go; 4: semleges |
 | 1.2 APM/SSE | 0 | 0 | −0.02 | szimuláció: no-go |
 | 1.3 TFFX | 0 | 0 | 0 | 3: no-go |
 | 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | 0 | −0.02 | ROWLR: no-go; KFINAL=70: semleges |
@@ -374,10 +380,10 @@ Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre k
 | 1.7 metaadat | 0 | −0.02 | −0.1 | a CM közel a korláthoz |
 | 2. online adaptáció | 0 | 0 | −0.03 | no-go |
 | 3. ECQ + konténer | 0 | −0.3 | −1.0 | GPU-n; eszközök, recept, CPU smoke-teszt kész |
-| **részösszeg a mostani erőforrásokkal** | **−0.02** | **−0.4** | **−1.35** | |
+| **részösszeg a mostani erőforrásokkal** | **−0.02** | **−0.4** | **−1.3** | |
 | 4. CM-komplementer finomhangolás | 0 | −0.3 | −0.8 | GPU + egy teljes CPU-futás |
 | 5. nagy GPU-track | −2.0 | −4.0 | −6.5 | bérelt GPU kell |
-| **mindennel** | **−2.0 (2.1 %)** | **−4.7 (4.9 %)** | **−8.7 (9.0 %)** | |
+| **mindennel** | **−2.0 (2.1 %)** | **−4.7 (4.9 %)** | **−8.6 (9.0 %)** | |
 
 A −9.59 MB-os cél (10 %) ezzel a mérésállással a legjobb esetben sem jön ki; a CPU-oldali karok
 a mostani erőforrásokkal legfeljebb néhány tized MB-ot adnak, a döntő tétel a 3. fázis (GPU-n), és
