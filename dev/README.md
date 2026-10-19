@@ -98,7 +98,8 @@ tree:
 |---|---|---|
 | `NEIF_ARM_TFCTX=1` | the final mixer selects its weight row, outside the gated zones, by the transformer's most probable byte: still possible after the bits coded so far, and its probability in 8 steps (today one row serves all those bytes); the new rows start seeded like the head row | `src/tf_sharpen.h`, `src/mixer/byte-mixer.cpp`, `src/predictor.cpp`, `src/context-manager.cpp` |
 | `NEIF_ARM_TFCTX=2` | the 24th layer-0 mixer selects by the state of the byte LSTM (as today) times that state of the transformer | same |
-| `NEIF_ARM_TFCTX=3` | both | same |
+| `NEIF_ARM_TFCTX=3` | both (20 MB prefix: +0.22 %; the 9 x 5 states times the partial byte overflow the 10,000 rows a mixer keeps) | same |
+| `NEIF_ARM_TFCTX=4` | as 2 with three states of the transformer (top byte ruled out, below 0.6, from 0.6); combines with 1 (`=5`), not with 2 | `src/tf_sharpen.h`, `src/context-manager.cpp` |
 | `NEIF_ARM_TFFX=1` | the transformer slot's prediction of the current bit as an internal input of the 18 first-layer mixers of fxcm (today only the byte LSTM's is) | `src/models/fxcmv1.cpp`, `src/predictor.cpp` |
 | `NEIF_ARM_TFFX=2` | the same for the second-layer mixers of fxcm | same |
 | `NEIF_ARM_TFFX=4` | an APM on that prediction, in the context of the partial byte and the last byte, as one more internal input of the first-layer mixers of fxcm (as an fxcm output it did not fit: fxcm fills 555 of its 557 columns, the predictor needs two free) | same |

@@ -209,6 +209,9 @@ void ContextManager::UpdateLx1() {
 #if NEIF_ARM_TFCTX & 2
     q = q * tf_sharpen::kStates + tf_sharpen::Q();
     if (tf_gate::ctx.zone) q = 5u * tf_sharpen::kStates + tf_gate::ctx.zone;
+#elif NEIF_ARM_TFCTX & 4
+    q = q * tf_sharpen::kStates3 + tf_sharpen::Q3();
+    if (tf_gate::ctx.zone) q = 5u * tf_sharpen::kStates3 + tf_gate::ctx.zone;
 #else
     if (tf_gate::ctx.zone) q = 5u + tf_gate::ctx.zone;
 #endif

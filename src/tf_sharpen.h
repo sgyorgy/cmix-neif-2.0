@@ -11,6 +11,11 @@
 //                       the gated zones (today: one row for every byte there)
 //   NEIF_ARM_TFCTX & 2  the 24th layer-0 mixer selects by the LSTM state times
 //                       this state
+//   NEIF_ARM_TFCTX & 4  the same with three states (Q3) instead of nine.  With
+//                       nine the mixer needs up to ~13,000 rows (state x the
+//                       partial byte), past the 10,000 a mixer keeps
+//                       (Mixer::GetContextData); every row beyond shares one.
+//                       TFCTX=3 lost 0.22 % on a 20 MB prefix.
 //
 // Not compiled into the submitted program (NEIF_ARM_TFCTX undefined).
 
@@ -65,6 +70,15 @@ inline unsigned int Q() {
   return 8;
 }
 constexpr unsigned int kStates = 9;
+
+// 0: no row or the top byte is ruled out; 1: below 0.6; 2: from 0.6
+inline unsigned int Q3() {
+  const unsigned int q = Q();
+  return q == 0 ? 0u : (q <= 3 ? 1u : 2u);
+}
+constexpr unsigned int kStates3 = 3;
+
+static_assert((NEIF_ARM_TFCTX & 6) != 6, "NEIF_ARM_TFCTX: bits 2 and 4 exclude each other");
 
 }  // namespace tf_sharpen
 
