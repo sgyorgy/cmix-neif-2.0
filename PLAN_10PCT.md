@@ -280,3 +280,105 @@ Gép: 4 vCPU Xeon @2.1 GHz, 15.7 GB RAM (lassabb a c2d-nél: a szövegrégió ~1
   **A 2. fázis becslése: 0 / 0 / −0.03 MB.**
 - Módosított részösszeg a mostani erőforrásokkal: kb. **−0.2 / −0.8 / −2.2 MB** (az 1.1–1.4-es
   karok és a 3. fázis mérése még hátravan).
+
+## 10. Második mérési kör (2026-10-19)
+
+### Üzem
+- Két A/B-kör szakadt meg: egy konténer-újraindulás (00:02 UTC), majd egy memória-túllépés (01:07
+  UTC). Ez utóbbit egy mellékszimulációm okozta: a 13.36 GiB-os cgroup-limit fölé vitte a gépet, és
+  az OOM-killer a codert állította le. Egy futás ~9.8 GB-ja nem nyerhető vissza (5.65 GB anon + 4.19
+  GB shmem), a többi feladatnak ~3.5 GB marad; azóta a mellékfeladatok `oom_score_adj=1000`-rel
+  futnak (a coderé nem csökkenthető, nincs hozzá jog). A driver karonként külön könyvtárban fut, a
+  kész karokat kihagyja, egy újraindulás csak a futó kart viszi el.
+- **A harness két hibája, javítva:** (1) `AB_REF_DIR` mellett a delta-oszlop a kar valódi méretét a
+  referencia u16-költségfájljának összegével vetette össze, ami 20 MB-on ~630 B-tal kevesebb (a kis
+  költségek lefelé kerekednek) — most a referencia saját eredményét használja (7fd66fa). (2) A
+  `build_dev.sh` a szállított comp9 hint- és cikksorrend-blokkjait fűzte a kar binárisához; egy kar,
+  amely a sima CM-et változtatja (pl. egy mixer-szabály), ezeket nem tudja dekódolni („dictionary
+  hints: derivation failed”) — `DEV_AUX=1` a kar saját segédprogramjával kódolja őket (bab5d2b; a
+  változatlan fán bájtra egyezik a comp9 blokkjaival).
+- A `TFFX=7` kar nem indult: a 4-es bit egy új fxcm-kimenetet adott (556/557 oszlop, a prediktor két
+  szabadat kér). A 4-es bit most belső mixer-bemenet (507d6e6).
+
+### 1.2 — a coder végső fokozata: no-go
+`dev/sim_final.py`, 2 M bájt (12–14 MB), a referencia-futás dumpja és költségfájlja:
+- APM a coder valószínűsége *után*, kontextus: részbájt × (a transformer bit-valószínűségének
+  vödre / a bájtkezdeti favorit Q-vödre / a még lehetséges bájtok közti top-valószínűség / előző
+  bájt): egyedül +0.006…+0.033, (p + 3·apm)/4 +0.002…+0.015, 2-bemenetes keverővel +0.0002
+  bit/bájt — mind rosszabb a codernél.
+- Online újrakeverés PPMd-vel és/vagy a transformerrel, konfidencia-vödrök szerint választott
+  súlykészletekkel: +0.0001…+0.0003 — nincs kihasználatlan információ.
+- A slot T = 1-nél optimális (T = 0.95: +0.0010, 1.05: +0.0024 bit/bájt); a PPMd-sor lineáris
+  bekeverése 2 %-kal +0.0041.
+- A coder kimenete tehát a transformer állapotára nézve kalibrált.
+
+### Időprofil (gdb-mintavétel a futó karon, `dev/prof_sample.sh`, `dev/prof_report.py`)
+Objektumfájlonként (a transformer kernelei külön objektumok): metaadat-blokk 93 % CM (a transformer
+ott kapuzott); redirect-blokk ~77 % transformer (int4 GEMV 38 %, attention 24 %, KDA 8 %);
+cikkszöveg (307 minta) **~65 % transformer** (int4 GEMV 25 %, attention 24 %, KDA 9 %) és ~35 % CM
+(fxcm, mixerek, PPMd, BITLSTM). Több transformer-számítás (dinamikus kiértékelés, második menet)
+nem fér bele az időkeretbe.
+
+### 1.7 metaadat, részletesen
+Ismétlődő szerkesztőnév 7.27 bit/rekord (egy order-0 adaptív modell 10.71-et adna), új név 33.9 bit
+(45,778 db, 194 KB). Revid: 1–2-es különbség az előzőhöz 0.9–1.5 bit, „véletlen” revid 22–24 bit
+(≈ log2 a 26 M-es tartománynak); egyszerű numerikus prediktorok (előző revid, a 8 előző mediánja)
+19.4–19.6 bitet adnak a CM 16.04-ével szemben. A CM közel van a korláthoz.
+
+### 1.5 fxcm-küszöbök
+A `blpos<448131719` és `<451531986` az fx2-cmix streamjének „fő szöveg vége” pontjai. A mi
+streamünkben a cenzus-régió ~457.0 MB-nál kezd (a ráta ~0.3 bit/bájtra esik), így 448.1–457.1 MB
+(~9 MB cikkszöveg) „szöveg utáni” módban fut. Javítás: a küszöbök a mi határunkra; becslés néhány KB,
+itt nem mérhető (≥ 460 MB-os prefix kellene, ~90 h).
+
+### 3. fázis — CPU smoke-teszt a valódi modellen (hibát talált)
+`training/tf/3_train/cpu_smoke/ecq_smoke.py` (fla helyett a `pysrc/kda_reference.py` tiszta
+torch-referenciái, sdpa): a qat-modell a konvertált checkpointtal hiánytalanul töltődik, az ECQ
+települ (151 kvantáló, 3.7294 bit/súly — egyezik a konténerrel), két AdamW-lépés véges gradienssel
+fut minden paraméteren és mind a 311 skálán, a bake és az export lefut. **A hiba:** a ráta-tag
+(−μ·d_in/(s ln 2)) a konténer 156 csupa-nulla sorát is tolta (s = 2^-24 a checkpointban), egyetlen
+lépés 40-szeresére növelte a skálájukat. Javítás (3b50f23): a tag a sor nem-nulla szintjeit számolja,
+a csupa-nulla sorok fagyasztva vannak (`TFT_ECQ_FREEZE_ZERO_ROWS`); self-test 6/6.
+
+### 4. fázis olcsó proxyja — nem dönt
+Fej-korrekció (logit + h·W + b) a dump első felén tanítva, a másodikon mérve, a transformer saját
+vesztesége vagy a coder-keverék proxyja szerint: kis tanulási rátán mindkettő ≤ 0.0001 bit/bájt,
+nagyobbon rosszabb. A transformer a teljes enwik9-en tanult; egy 0.5 MB-os szelet nem ad jelet. A 4.
+fázishoz a teljes stream költségfájlja kell egy teljes futásból.
+
+### A/B, 20 MB prefix, a referencia (ab1/1, 3,528,375 B) ellen
+
+| kar | metaadat | redirect | cikkszöveg 8.84–20 MB | összesen | ítélet |
+|---|---:|---:|---:|---:|---|
+| `TFCTX=3` (transformer-konfidencia a final mixer és a 24. mixer kontextusában) | 0 | +0.65 % | +0.44 % (ablakonként +0.58 → +0.17 %) | **+7,700 B (+0.218 %)** | no-go |
+| `TFFX=3` (a transformer bitje az fxcm 1./2. szintű mixereibe) | +0.01 % | +0.12 % | +0.196 % (egyenletes) | **+3,668 B (+0.104 %)** | no-go |
+| `ROWLR=1` (soronkénti mixer-tanulási ráta) | | | | fut | |
+| `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | | | | sorban | |
+| `TFCTX=1` (csak a final mixer sorai) | | | | sorban | |
+| `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | sorban | |
+
+Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre köti, bitekbe kerül —
+összhangban azzal, hogy a coder a kettőt már optimálisan keveri (1.2); az fxcm független modellként
+ér többet.
+
+### Módosított nyereség-költségvetés (MB S; low / mid / high)
+
+| kar | low | mid | high | állapot |
+|---|---:|---:|---:|---|
+| 1.1 TFCTX | 0 | 0 | −0.05 | 3: no-go; 1 és 4 sorban |
+| 1.2 APM/SSE | 0 | 0 | −0.02 | szimuláció: no-go |
+| 1.3 TFFX | 0 | 0 | 0 | 3: no-go |
+| 1.4 mixer-ráták (ROWLR, KFINAL) | 0 | −0.03 | −0.15 | mérés fut |
+| 1.5 fxcm-küszöbök | 0 | −0.005 | −0.01 | itt nem mérhető |
+| 1.6 BITLSTM 100 %-on | −0.02 | −0.05 | −0.12 | teljes futás kell (trace) |
+| 1.7 metaadat | 0 | −0.02 | −0.1 | a CM közel a korláthoz |
+| 2. online adaptáció | 0 | 0 | −0.03 | no-go |
+| 3. ECQ + konténer | 0 | −0.3 | −1.0 | GPU-n; eszközök, recept, CPU smoke-teszt kész |
+| **részösszeg a mostani erőforrásokkal** | **−0.02** | **−0.4** | **−1.5** | |
+| 4. CM-komplementer finomhangolás | 0 | −0.3 | −0.8 | GPU + egy teljes CPU-futás |
+| 5. nagy GPU-track | −2.0 | −4.0 | −6.5 | bérelt GPU kell |
+| **mindennel** | **−2.0 (2.1 %)** | **−4.7 (4.9 %)** | **−8.8 (9.2 %)** | |
+
+A −9.59 MB-os cél (10 %) ezzel a mérésállással a legjobb esetben sem jön ki; a CPU-oldali karok
+a mostani erőforrásokkal legfeljebb néhány tized MB-ot adnak, a döntő tétel a 3. fázis (GPU-n), és
+csak az 5. fázis viheti a −5 % fölé. Hutter-díjra nem adtuk be.
