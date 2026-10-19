@@ -354,8 +354,8 @@ fázishoz a teljes stream költségfájlja kell egy teljes futásból.
 | `TFFX=3` (a transformer bitje az fxcm 1./2. szintű mixereibe) | +0.01 % | +0.12 % | +0.196 % (egyenletes) | **+3,668 B (+0.104 %)** | no-go |
 | `ROWLR=1` (soronkénti mixer-tanulási ráta, a hint- és sorrend-blokk a kar saját segédprogramjával) | +0.02 % | −0.09 % | +0.051 % (ablakonként +0.11 → +0.04 %) | **+771 B (+0.022 %)** | no-go (a ritka kontextusok gyorsabb tanulása csak a redirect-blokkban fizet) |
 | `KFINAL=70` (a mixer-ütemezés utolsó lépése 0.1 → 0.07) | 0 | −0.004 % | +0.007 % (az utolsó 4 MB-on +0.011 %) | **+96 B (+0.003 %)** | semleges: a ráta ebben a tartományban alig számít |
-| `TFCTX=1` (csak a final mixer sorai) | | | | fut | |
-| `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | sorban | |
+| `TFCTX=1` (csak a final mixer sorai) | 0 | +0.52 % | +0.233 % (ablakonként +0.46 → +0.14 %, az utolsó kettő ellaposodik) | **+6,134 B (+0.174 %)** | no-go: a 9 felé osztott final mixer lassabban tanul; ez adja a TFCTX=3 veszteségének javát |
+| `TFCTX=4` (a 24. mixer 3 transformer-állapottal; a 9 állapot × részbájt túllépte a mixerenkénti 10,000 sort) | | | | fut | |
 
 Tanulság eddig: minden változtatás, amely a CM egy részét a transformerre köti, bitekbe kerül —
 összhangban azzal, hogy a coder a kettőt már optimálisan keveri (1.2); az fxcm független modellként
